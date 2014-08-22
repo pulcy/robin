@@ -4,7 +4,6 @@ keys = [
 ]
 mode = "0644"
 src = "nginx-subliminl.tmpl"
-#src = "test.tmpl"
 dest = "/data/config/subliminl.conf"
 #check_cmd  = "/usr/local/sbin/nginx -t -c {{ .src }}"
 reload_cmd = "/usr/bin/supervisorctl -s unix:///supervisor.sock restart nginx"

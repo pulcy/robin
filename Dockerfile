@@ -7,9 +7,10 @@ RUN mkdir -p /data/logs
 RUN mkdir -p /data/config
 
 # Add files
-ADD ./confd.sh /usr/local/bin/confd.sh
 ADD ./conf.d/nginx-subliminl.toml /etc/confd/conf.d/nginx-subliminl.toml
 ADD ./templates/nginx-subliminl.tmpl /etc/confd/templates/nginx-subliminl.tmpl
+ADD ./start.sh /start.sh
+ADD ./public_html/502.html /public_html/502.html
 
 # Configure volumns
 VOLUME ["/data"]
@@ -18,4 +19,4 @@ VOLUME ["/data"]
 ADD ./supervisord.conf /etc/supervisord.conf
 
 # Start supervisord
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+CMD ["/start.sh"]

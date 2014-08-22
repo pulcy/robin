@@ -1,0 +1,23 @@
+<head>
+<meta http-equiv="refresh" content="40" /> 
+</head>
+<body>
+<script language="JavaScript" type="text/javascript">
+/*<![CDATA[*/
+var TimerVal = 40;
+var TimerSPan = document.getElementById("CDTimer");
+function CountDown() {
+   setTimeout( "CountDown()", 1000 );
+   TimerSPan.innerHTML=TimerVal;
+   TimerVal=TimerVal-1;
+   if (TimerVal<0) { 
+     TimerVal=0;
+     location.reload(true); 
+   } 
+}
+CountDown();
+/*]]>*/ </script> 
+Please wait ...
+<div id="CDTimer"></div>
+</body>
+</html>
