@@ -1,0 +1,14 @@
+{
+	"name": "load-balancer",
+	"version": "0.0.1",
+	"description": "Nginx based load-balancer/reverse proxy package as Docker image",
+	"devDependencies": {
+		"grunt": ">=0.4.5",
+		"grunt-dib": ">=0.1.2",
+	    "grunt-exec": "*",
+		"grunt-release": "1.x"
+	},
+	"publishConfig": {
+		"registry": "http://arvika-ssh:16073/"
+	}
+}

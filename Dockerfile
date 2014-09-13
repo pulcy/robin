@@ -14,6 +14,8 @@ ADD ./public_html/502.html /public_html/502.html
 
 # Configure volumns
 VOLUME ["/data"]
+EXPOSE 80
+EXPOSE 443
 
 # Configure startup
 ADD ./supervisord.conf /etc/supervisord.conf
