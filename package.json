@@ -1,6 +1,6 @@
 {
 	"name": "load-balancer",
-	"version": "0.0.9",
+	"version": "0.0.10",
 	"description": "Nginx based load-balancer/reverse proxy package as Docker image",
 	"devDependencies": {
 		"grunt": ">=0.4.5",
