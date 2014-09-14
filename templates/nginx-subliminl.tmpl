@@ -1,7 +1,7 @@
 {{/* Loop over all webapps to create upstreams */}}
 {{range ls "/webapps" }}
   {{ $service:= (base .) }}
-  {{ $key:= printf "/services/test/%s" $service }}
+  {{ $key:= printf "/services/__REGION__/%s" $service }}
 
   # Upstream for {{ $service }}
   {{ if ls $key }}
@@ -39,7 +39,7 @@ server {
   {{/* Loop over all webapps to create location blocks */}}
   {{range gets "/webapps/*/location/*" }}
     {{ $service := base (parent (parent .Key)) }}
-    {{ $key:= printf "/services/test/%s" $service }}
+    {{ $key:= printf "/services/__REGION__/%s" $service }}
     {{ if ls $key }}
 
     location {{ .Value }} {

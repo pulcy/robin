@@ -12,5 +12,11 @@ if [ -z $ETCD_URL ]; then
 fi
 echo "ETCD_URL=$ETCD_URL"
 
+# Set variables in configuration template
+[[ -z $REGION ]] && export REGION=test
+echo "REGION=$REGION"
+sed -i -r "s/__REGION__/$REGION/g" /etc/confd/templates/nginx-subliminl.tmpl
+cat /etc/confd/templates/nginx-subliminl.tmpl
+
 # Start supervisord
 /usr/bin/supervisord -c /etc/supervisord.conf
