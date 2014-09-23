@@ -1,19 +1,25 @@
 <head>
-<meta http-equiv="refresh" content="40" /> 
+<meta http-equiv="refresh" content="10" /> 
 </head>
 <body>
 <script language="JavaScript" type="text/javascript">
 /*<![CDATA[*/
-var TimerVal = 40;
-var TimerSPan = document.getElementById("CDTimer");
+var TimerVal = 10;
+var TimerSPan;
 function CountDown() {
-   setTimeout( "CountDown()", 1000 );
-   TimerSPan.innerHTML=TimerVal;
-   TimerVal=TimerVal-1;
-   if (TimerVal<0) { 
-     TimerVal=0;
-     location.reload(true); 
-   } 
+	setTimeout(function() {
+		if (!TimerSPan) {
+			TimerSPan = document.getElementById("CDTimer");
+		} 
+	    TimerSPan.innerHTML=TimerVal;
+	    TimerVal=TimerVal-1;
+	    if (TimerVal<0) { 
+	    	TimerVal=0;
+	     	location.reload(true); 
+	   	} else {
+	   		CountDown();
+	   	}
+    }, 1000);
 }
 CountDown();
 /*]]>*/ </script> 

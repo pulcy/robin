@@ -10,6 +10,7 @@ RUN mkdir -p /data/config
 ADD ./conf.d/nginx-subliminl.toml /etc/confd/conf.d/nginx-subliminl.toml
 ADD ./templates/nginx-subliminl.tmpl /etc/confd/templates/nginx-subliminl.tmpl
 ADD ./start.sh /start.sh
+ADD ./reload.sh /reload.sh
 ADD ./public_html/502.html /public_html/502.html
 
 # Configure volumns
