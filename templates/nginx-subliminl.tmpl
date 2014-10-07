@@ -36,8 +36,11 @@ server {
   ssl on;
   ssl_certificate /data/tls/server.crt;
   ssl_certificate_key /data/tls/server.key;
-  ssl_session_timeout 5m;
-  ssl_session_cache none;
+  ssl_session_timeout 10m;
+  ssl_session_cache shared:SSL:5m;
+
+  # Instruct browsers to always use https instead of http
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
 
   {{/* Loop over all webapps to create location blocks */}}
   {{range gets "/webapps/*/location/*" }}
