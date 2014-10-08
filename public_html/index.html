@@ -1,5 +1,7 @@
+<!DOCTYPE html>
+<html>
 <head>
-<meta http-equiv="refresh" content="10" /> 
+<title>Welcome to Subliminl!</title>
 <style>
     body {
     	padding: 0;
@@ -28,44 +30,18 @@ background-image: url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAU
 }
 
 h1 { color: orange;}
-span { color: blue;}
 
 </style>
 </head>
 <body>
-<script language="JavaScript" type="text/javascript">
-/*<![CDATA[*/
-var chars = ['=---', '-=--', '--=-', '---=', '--=-', '-=--'];
-var MaxTimerVal = 30;
-var TimerVal = MaxTimerVal;
-var TimerSPan;
-function CountDown() {
-	setTimeout(function() {
-		if (!TimerSPan) {
-			TimerSPan = document.getElementById("CDTimer");
-		} 
-	    TimerSPan.innerHTML=chars[(MaxTimerVal - TimerVal) % chars.length];
-	    TimerVal=TimerVal-1;
-	    if (TimerVal<0) { 
-	    	TimerVal=0;
-	     	location.reload(true); 
-	   	} else {
-	   		CountDown();
-	   	}
-    }, 200);
-}
-CountDown();
-/*]]>*/ </script> 
 <div id="container">
 <div id="content">
 <h1>Welcome to Subliminl!</h1>
-<p>We're currently processing your request.</p>
-<p>This page will automatically refresh.</p>
+<p>We're currently offline for maintenance.</p>
+<p>We will be back online soon, so refresh shortly.</p>
 
 <p><em>Thank you for your patience.</em></p>
-<p><span id="CDTimer">----</span></p>
 </div>
 </div>
-
 </body>
 </html>

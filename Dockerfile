@@ -12,6 +12,7 @@ ADD ./templates/nginx-subliminl.tmpl /etc/confd/templates/nginx-subliminl.tmpl
 ADD ./start.sh /start.sh
 ADD ./reload.sh /reload.sh
 ADD ./public_html/502.html /public_html/502.html
+ADD ./public_html/index.html /usr/local/nginx/html/index.html
 
 # Configure volumns
 VOLUME ["/data"]

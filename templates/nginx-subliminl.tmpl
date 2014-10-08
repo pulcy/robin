@@ -40,7 +40,7 @@ server {
   ssl_session_cache shared:SSL:5m;
 
   # Instruct browsers to always use https instead of http
-  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
+  #add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
 
   {{/* Loop over all webapps to create location blocks */}}
   {{range gets "/webapps/*/location/*" }}
@@ -52,6 +52,7 @@ server {
       proxy_pass http://{{ $service }};
       proxy_cache Subliminl;
       proxy_http_version 1.1;
+      proxy_buffers 32 4k;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
       proxy_set_header Host $http_host;
