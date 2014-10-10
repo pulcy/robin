@@ -1,0 +1,67 @@
+{{ $region := "__REGION__" }}
+
+global
+  chroot /var/lib/haproxy
+  user haproxy
+  group haproxy
+
+defaults
+  mode http
+  timeout connect 5000ms
+  timeout client 50000ms
+  timeout server 50000ms
+  option forwardfor
+  option http-server-close
+  log global
+  option httplog
+  errorfile 400 /app/errors/400.http
+  errorfile 403 /app/errors/403.http
+  errorfile 408 /app/errors/408.http
+  errorfile 500 /app/errors/500.http
+  errorfile 502 /app/errors/502.http
+  errorfile 503 /app/errors/503.http
+  errorfile 504 /app/errors/504.http
+
+listen stats :7086
+   stats enable   
+   stats uri /
+   stats realm Haproxy\ Statistics
+   stats auth user:password
+
+{{/* Loop over all webapps to create backends */}}
+{{range ls "/webapps" }} {{ $service:= (base .) }} {{ $key:= printf "/services/%s/%s" $region $service }}
+  # Backend for {{ $service }}
+  {{ if ls $key }}
+backend {{ $service }} 
+  mode http 
+  balance roundrobin
+  {{range getvs (printf "%s/*" $key) }}
+  server {{ base . }} {{ . }} check
+  {{end}} 
+  {{end}}
+
+{{end}}
+
+frontend https-in
+  # HTTPS server
+  bind *:443 ssl crt /data/tls/server.pem
+  reqadd X-Forwarded-Port:\ %[dst_port]
+  reqadd X-Forwarded-Proto:\ https
+  default_backend root-app
+  {{/* Loop over all webapps to create acl blocks */}}
+  {{range gets "/webapps/*/location/*" }} {{ $service := base (parent (parent .Key)) }} {{ $key:= printf "/services/%s/%s" $region $service }} {{ if ls $key }}
+  {{ if ne $service "root-app" }}
+  acl url_{{ $service }} path_beg {{ .Value }}
+  {{end}} {{end}} {{end}}
+  {{/* Loop over all webapps to create use_backend blocks */}}
+  {{range ls "/webapps" }} {{ $service:= (base .) }} {{ $key:= printf "/services/%s/%s" $region $service }} {{ if ls $key }}
+  {{ if ne $service "root-app" }}
+  use_backend {{ $service }} if url_{{ $service }}
+  {{end}} {{end}} {{end}}
+
+frontend http-in
+  # Forward http to https
+  bind *:80
+  # Redirect all HTTP traffic to HTTPS
+  redirect scheme https if !{ ssl_fc }
+

@@ -1,18 +1,52 @@
 # Load-balancer
-FROM ewoutp/docker-nginx-confd
+FROM ubuntu:14.04.1
 
-# Configure nginx
-ADD ./nginx.conf /etc/nginx.conf
+# ---------------------------------------------------------
+# Installation
+# ---------------------------------------------------------
+
+# Install curl, supervisor & haproxy
+#RUN mv /etc/mime.types /etc/nginx.mime.types
+RUN DEBIAN_FRONTEND=noninteractive  apt-get update && apt-get install -y curl supervisor  python-software-properties software-properties-common
+RUN DEBIAN_FRONTEND=noninteractive  apt-add-repository ppa:vbernat/haproxy-1.5
+RUN DEBIAN_FRONTEND=noninteractive  apt-get update
+RUN DEBIAN_FRONTEND=noninteractive  apt-get install -y haproxy
+RUN DEBIAN_FRONTEND=noninteractive  apt-get install -y nano
+RUN DEBIAN_FRONTEND=noninteractive  apt-get clean
+
+# Install confd
+ENV CONFD_VERSION 0.6.3
+
+ADD ./bin/confd /usr/local/bin/confd
+RUN chmod 0755 /usr/local/bin/confd
+RUN mkdir -p /etc/confd/conf.d
+RUN mkdir -p /etc/confd/templates
+
+# ---------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------
+
+# Configure haproxy
 RUN mkdir -p /data/logs
 RUN mkdir -p /data/config
 
 # Add files
-ADD ./conf.d/nginx-subliminl.toml /etc/confd/conf.d/nginx-subliminl.toml
-ADD ./templates/nginx-subliminl.tmpl /etc/confd/templates/nginx-subliminl.tmpl
-ADD ./start.sh /start.sh
-ADD ./reload.sh /reload.sh
-ADD ./public_html/502.html /public_html/502.html
-ADD ./public_html/index.html /usr/local/nginx/html/index.html
+ADD ./errors/ /app/errors/
+ADD ./public_html/ /app/public_html/
+ADD ./supervisord.conf /etc/supervisord.conf
+ADD ./conf.d/haproxy-subliminl.toml /etc/confd/conf.d/haproxy-subliminl.toml
+ADD ./templates/haproxy-subliminl.tmpl /etc/confd/templates/haproxy-subliminl.tmpl
+ADD ./start.sh /app/start.sh
+ADD ./reload-haproxy.sh /app/reload-haproxy.sh
+
+# Create error responses
+RUN cat /app/errors/400.hdr /app/public_html/400.html > /app/errors/400.http
+RUN cat /app/errors/403.hdr /app/public_html/403.html > /app/errors/403.http
+RUN cat /app/errors/408.hdr /app/public_html/408.html > /app/errors/408.http
+RUN cat /app/errors/500.hdr /app/public_html/500.html > /app/errors/500.http
+RUN cat /app/errors/502.hdr /app/public_html/50x.html > /app/errors/502.http
+RUN cat /app/errors/503.hdr /app/public_html/50x.html > /app/errors/503.http
+RUN cat /app/errors/504.hdr /app/public_html/50x.html > /app/errors/504.http
 
 # Configure volumns
 VOLUME ["/data"]
@@ -23,4 +57,4 @@ EXPOSE 443
 ADD ./supervisord.conf /etc/supervisord.conf
 
 # Start supervisord
-CMD ["/start.sh"]
+CMD ["/app/start.sh"]

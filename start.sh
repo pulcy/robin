@@ -12,10 +12,18 @@ if [ -z $ETCD_URL ]; then
 fi
 echo "ETCD_URL=$ETCD_URL"
 
+# Prepare server.pem
+if [ ! -f /data/tls/server.pem ]; then
+	if [ -f /data/tls/server.crt ]; then
+		cat /data/tls/server.crt /data/tls/server.key > /data/tls/server.pem
+	fi
+fi
+
 # Set variables in configuration template
 [[ -z $REGION ]] && export REGION=test
 echo "REGION=$REGION"
 sed -i -r "s/__REGION__/$REGION/g" /etc/confd/templates/nginx-subliminl.tmpl
+sed -i -r "s/__REGION__/$REGION/g" /etc/confd/templates/haproxy-subliminl.tmpl
 cat /etc/confd/templates/nginx-subliminl.tmpl
 
 # Start supervisord
