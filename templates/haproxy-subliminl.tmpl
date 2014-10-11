@@ -56,7 +56,12 @@ frontend https-in
   {{/* Loop over all webapps to create acl blocks */}}
   {{range gets "/webapps/*/location/*" }} {{ $service := base (parent (parent .Key)) }} {{ $key:= printf "/services/%s/%s" $region $service }} {{ if ls $key }}
   {{ if ne $service "root-app" }}
+  {{ $regSplit := split .Value " " }}
+  {{ if eq (index $regSplit 0) "~" }}
+  acl url_{{ $service }} path_reg {{ index $regSplit 1 }}
+  {{else}}
   acl url_{{ $service }} path_beg {{ .Value }}
+  {{end}}
   {{end}} {{end}} {{end}}
   {{/* Loop over all webapps to create use_backend blocks */}}
   {{range ls "/webapps" }} {{ $service:= (base .) }} {{ $key:= printf "/services/%s/%s" $region $service }} {{ if ls $key }}
