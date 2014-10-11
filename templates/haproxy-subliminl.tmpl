@@ -24,11 +24,13 @@ defaults
   errorfile 503 /app/errors/503.http
   errorfile 504 /app/errors/504.http
 
-listen stats :7086
-   stats enable   
-   stats uri /
-   stats realm Haproxy\ Statistics
-   stats auth user:password
+frontend stats
+  # Stats over https
+  bind *:7086 ssl crt /data/tls/server.pem
+  stats enable   
+  stats uri /
+  stats realm Haproxy\ Statistics
+  stats auth admin:BYvQf9YdaBAgkR6AX4zm
 
 {{/* Loop over all webapps to create backends */}}
 {{range ls "/webapps" }} {{ $service:= (base .) }} {{ $key:= printf "/services/%s/%s" $region $service }}
