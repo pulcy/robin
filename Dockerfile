@@ -6,13 +6,11 @@ FROM ubuntu:14.04.1
 # ---------------------------------------------------------
 
 # Install curl, supervisor & haproxy
-#RUN mv /etc/mime.types /etc/nginx.mime.types
-RUN DEBIAN_FRONTEND=noninteractive  apt-get update && apt-get install -y curl supervisor  python-software-properties software-properties-common
-RUN DEBIAN_FRONTEND=noninteractive  apt-add-repository ppa:vbernat/haproxy-1.5
-RUN DEBIAN_FRONTEND=noninteractive  apt-get update
-RUN DEBIAN_FRONTEND=noninteractive  apt-get install -y haproxy
-RUN DEBIAN_FRONTEND=noninteractive  apt-get install -y nano
-RUN DEBIAN_FRONTEND=noninteractive  apt-get clean
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y curl supervisor  python-software-properties software-properties-common
+RUN DEBIAN_FRONTEND=noninteractive apt-add-repository ppa:vbernat/haproxy-1.5
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y haproxy
+RUN DEBIAN_FRONTEND=noninteractive apt-get clean
 
 # Install confd
 ENV CONFD_VERSION 0.6.3
@@ -29,6 +27,8 @@ RUN mkdir -p /etc/confd/templates
 # Configure haproxy
 RUN mkdir -p /data/logs
 RUN mkdir -p /data/config
+RUN mkdir -p /data/config
+RUN mkdir -p /var/lib/haproxy/dev
 
 # Add files
 ADD ./errors/ /app/errors/
@@ -50,11 +50,12 @@ RUN cat /app/errors/504.hdr /app/public_html/50x.html > /app/errors/504.http
 
 # Configure volumns
 VOLUME ["/data"]
+VOLUME ["/dev/log"]
+
+# Export ports
 EXPOSE 80
 EXPOSE 443
-
-# Configure startup
-ADD ./supervisord.conf /etc/supervisord.conf
+EXPOSE 7086
 
 # Start supervisord
 CMD ["/app/start.sh"]

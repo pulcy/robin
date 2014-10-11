@@ -1,6 +1,7 @@
 {{ $region := "__REGION__" }}
 
 global
+  log /dev/log local0
   chroot /var/lib/haproxy
   user haproxy
   group haproxy
@@ -14,6 +15,7 @@ defaults
   option http-server-close
   log global
   option httplog
+  option dontlognull
   errorfile 400 /app/errors/400.http
   errorfile 403 /app/errors/403.http
   errorfile 408 /app/errors/408.http
@@ -35,6 +37,7 @@ listen stats :7086
 backend {{ $service }} 
   mode http 
   balance roundrobin
+  option httpchk GET /__status/check
   {{range getvs (printf "%s/*" $key) }}
   server {{ base . }} {{ . }} check
   {{end}} 
