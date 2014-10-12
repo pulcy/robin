@@ -1,10 +1,10 @@
 {{ $region := "__REGION__" }}
 
 global
-  log /dev/log local0
   chroot /var/lib/haproxy
   user haproxy
   group haproxy
+  log /dev/log local0
 
 defaults
   mode http
