@@ -28,7 +28,7 @@ defaults
 
 frontend stats
   # Stats over https
-  bind *:7086 ssl crt /data/tls/server.pem
+  bind *:7086 ssl crt /data/tls/server.pem no-sslv3 
   stats enable   
   stats uri /
   stats realm Haproxy\ Statistics
@@ -51,7 +51,7 @@ backend {{ $service }}
 
 frontend https-in
   # HTTPS server (see https://wiki.mozilla.org/Security/Server_Side_TLS)
-  bind *:443 ssl crt /data/tls/server.pem 
+  bind *:443 ssl crt /data/tls/server.pem no-sslv3 
   reqadd X-Forwarded-Port:\ %[dst_port]
   reqadd X-Forwarded-Proto:\ https
   # Enable HSTS (recommended)
