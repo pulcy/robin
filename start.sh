@@ -15,10 +15,8 @@ fi
 echo "ETCD_URL=$ETCD_URL"
 
 # Prepare server.pem
-if [ ! -f /data/tls/server.pem ]; then
-	if [ -f /data/tls/server.crt ]; then
-		cat /data/tls/server.crt /data/tls/server.key > /data/tls/server.pem
-	fi
+if [ -f /data/tls/server.crt ]; then
+	cat /data/tls/server.crt /data/tls/server.key > /data/tls/server.pem
 fi
 
 # Set variables in configuration template
