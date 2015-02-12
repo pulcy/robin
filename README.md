@@ -7,7 +7,7 @@ Building
 ========
 
 ```
-docker build -t load-balancer .
+make docker
 ```
 
 Running
