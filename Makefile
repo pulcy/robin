@@ -11,7 +11,7 @@ clean:
 	@rm -Rf bin $(GOBUILDDIR)
 
 .gobuild/bin/confd:
-	@devtool get -b v0.6.3 git@github.com:kelseyhightower/confd.git $(GOBUILDDIR)/src/github.com/kelseyhightower/confd
+	@devtool get -b v0.7.1 git@github.com:kelseyhightower/confd.git $(GOBUILDDIR)/src/github.com/kelseyhightower/confd
 	@devtool get git@github.com:Subliminl/go-etcd.git $(GOBUILDDIR)/src/github.com/coreos/go-etcd
 	GOPATH=$(GOBUILDDIR) go get github.com/kelseyhightower/confd
 	GOPATH=$(GOBUILDDIR) go build github.com/kelseyhightower/confd

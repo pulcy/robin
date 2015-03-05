@@ -59,7 +59,7 @@ frontend https-in
   # Backend configuration
   default_backend root-app
   {{/* Loop over all webapps to create acl blocks */}}
-  {{range gets "/webapps/*/location/*" }} {{ $service := base (parent (parent .Key)) }} {{ $key:= printf "/services/%s/%s" $region $service }} {{ if ls $key }}
+  {{range gets "/webapps/*/location/*" }} {{ $service := base (dir (dir .Key)) }} {{ $key:= printf "/services/%s/%s" $region $service }} {{ if ls $key }}
   {{ if ne $service "root-app" }}
   {{ $regSplit := split .Value " " }}
   {{ if eq (index $regSplit 0) "~" }}
