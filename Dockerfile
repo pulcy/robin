@@ -34,8 +34,8 @@ RUN mkdir -p /var/lib/haproxy/dev
 ADD ./errors/ /app/errors/
 ADD ./public_html/ /app/public_html/
 ADD ./supervisord.conf /etc/supervisord.conf
-ADD ./conf.d/haproxy-subliminl.toml /etc/confd/conf.d/haproxy-subliminl.toml
-ADD ./templates/haproxy-subliminl.tmpl /etc/confd/templates/haproxy-subliminl.tmpl
+ADD ./conf.d/haproxy-pulcy.toml /etc/confd/conf.d/haproxy-pulcy.toml
+ADD ./templates/haproxy-pulcy.tmpl /etc/confd/templates/haproxy-pulcy.tmpl
 ADD ./start.sh /app/start.sh
 ADD ./reload-haproxy.sh /app/reload-haproxy.sh
 

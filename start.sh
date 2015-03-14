@@ -22,7 +22,7 @@ fi
 # Set variables in configuration template
 [[ -z $REGION ]] && export REGION=test
 echo "REGION=$REGION"
-sed -i -r "s/__REGION__/$REGION/g" /etc/confd/templates/haproxy-subliminl.tmpl
+sed -i -r "s/__REGION__/$REGION/g" /etc/confd/templates/haproxy-pulcy.tmpl
 
 # Start supervisord
 /usr/bin/supervisord -c /etc/supervisord.conf

@@ -1,7 +1,7 @@
-Subliminl Load-balancer
-=======================
+Pulcy Load-balancer
+===================
 
-This project contains the source files and scripts to build the Subliminl load balancer containers.
+This project contains the source files and scripts to build the pulcy load balancer containers.
 
 Building
 ========
