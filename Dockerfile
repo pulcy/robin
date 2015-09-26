@@ -1,22 +1,18 @@
 # Load-balancer
-FROM ubuntu:14.04.1
+FROM alpine:3.2
 
 # ---------------------------------------------------------
 # Installation
 # ---------------------------------------------------------
 
 # Install curl, supervisor & haproxy
-RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y curl supervisor  python-software-properties software-properties-common
-RUN DEBIAN_FRONTEND=noninteractive apt-add-repository ppa:vbernat/haproxy-1.5
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y haproxy
-RUN DEBIAN_FRONTEND=noninteractive apt-get clean
+RUN apk add -U haproxy curl supervisor
 
 # Install confd
-ENV CONFD_VERSION 0.6.3
-
-ADD ./bin/confd /usr/local/bin/confd
+ENV CONFD_VERSION 0.10.0
+RUN curl -o /usr/local/bin/confd https://github.com/kelseyhightower/confd/releases/download/v${CONFD_VERSION}/confd-${CONFD_VERSION}-darwin-amd64
 RUN chmod 0755 /usr/local/bin/confd
+
 RUN mkdir -p /etc/confd/conf.d
 RUN mkdir -p /etc/confd/templates
 
@@ -34,8 +30,8 @@ RUN mkdir -p /var/lib/haproxy/dev
 ADD ./errors/ /app/errors/
 ADD ./public_html/ /app/public_html/
 ADD ./supervisord.conf /etc/supervisord.conf
-ADD ./conf.d/haproxy-pulcy.toml /etc/confd/conf.d/haproxy-pulcy.toml
-ADD ./templates/haproxy-pulcy.tmpl /etc/confd/templates/haproxy-pulcy.tmpl
+ADD ./conf.d/haproxy-iggi.toml /etc/confd/conf.d/haproxy-iggi.toml
+ADD ./templates/haproxy-iggi.tmpl /etc/confd/templates/haproxy-iggi.tmpl
 ADD ./start.sh /app/start.sh
 ADD ./reload-haproxy.sh /app/reload-haproxy.sh
 

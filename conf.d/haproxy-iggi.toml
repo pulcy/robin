@@ -1,9 +1,9 @@
 [template]
 keys = [
-  "/webapps",
-  "/services"
+  "/iggi/webapps",
+  "/iggi/services"
 ]
 mode = "0644"
-src = "haproxy-pulcy.tmpl"
+src = "haproxy-iggi.tmpl"
 dest = "/data/config/haproxy.cfg"
 reload_cmd = "/app/reload-haproxy.sh"
