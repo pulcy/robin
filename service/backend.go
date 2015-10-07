@@ -21,9 +21,10 @@ type ServiceRegistration struct {
 }
 
 type FrontEndRegistration struct {
-	Name      string
-	Selectors []FrontEndSelector
-	Service   string
+	Name          string
+	Selectors     []FrontEndSelector
+	Service       string
+	HttpCheckPath string
 }
 
 type FrontEndSelector struct {

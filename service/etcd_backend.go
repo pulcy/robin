@@ -69,8 +69,9 @@ func (eb *etcdBackend) Services() ([]ServiceRegistration, error) {
 }
 
 type frontendRecord struct {
-	Selectors []frontendSelectorRecord `json:"selectors"`
-	Service   string                   `json:"service,omitempty"`
+	Selectors     []frontendSelectorRecord `json:"selectors"`
+	Service       string                   `json:"service,omitempty"`
+	HttpCheckPath string                   `json:"http-check-path,omitempty"`
 }
 
 type frontendSelectorRecord struct {
@@ -100,8 +101,9 @@ func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
 		}
 
 		reg := FrontEndRegistration{
-			Name:    path.Base(frontEndNode.Key),
-			Service: record.Service,
+			Name:          path.Base(frontEndNode.Key),
+			Service:       record.Service,
+			HttpCheckPath: record.HttpCheckPath,
 		}
 		for _, sel := range record.Selectors {
 			reg.Selectors = append(reg.Selectors, FrontEndSelector{

@@ -202,13 +202,20 @@ func (s *Service) createConfig() (string, string, error) {
 			"mode http",
 			"balance roundrobin",
 		)
+		if fr.HttpCheckPath != "" {
+			backendSection.Add(fmt.Sprintf("option httpchk GET %s", fr.HttpCheckPath))
+		}
 		for _, service := range services {
 			if service.Name != fr.Service {
 				continue
 			}
 			for i, b := range service.Backends {
 				id := fmt.Sprintf("%s-%d", service.Name, i)
-				backendSection.Add(fmt.Sprintf("server %s %s", id, b))
+				check := ""
+				if fr.HttpCheckPath != "" {
+					check = "check"
+				}
+				backendSection.Add(fmt.Sprintf("server %s %s %s", id, b, check))
 			}
 		}
 	}
