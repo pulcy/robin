@@ -179,8 +179,9 @@ func (s *Service) createConfig() (string, string, error) {
 			if service.Name != fr.Service {
 				continue
 			}
-			for _, b := range service.Backends {
-				backendSection.Add(fmt.Sprintf("server %s", b))
+			for i, b := range service.Backends {
+				id := fmt.Sprintf("%s-%d", service.Name, i)
+				backendSection.Add(fmt.Sprintf("server %s %s", id, b))
 			}
 		}
 	}
