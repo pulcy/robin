@@ -67,6 +67,7 @@ type Service struct {
 	ServiceDependencies
 
 	signalCounter uint32
+	lastConfig    string
 }
 
 // NewService creates a new service instance.
@@ -110,6 +111,14 @@ func (s *Service) updateHaproxy() error {
 		return maskAny(err)
 	}
 
+	// Cleanup afterwards
+	defer os.Remove(tempConf)
+
+	// If nothing has changed, don't do anything
+	if s.lastConfig == config {
+		return nil
+	}
+
 	// Validate the config
 	if err := s.validateConfig(tempConf); err != nil {
 		return maskAny(err)
@@ -126,6 +135,9 @@ func (s *Service) updateHaproxy() error {
 	if err := s.restartHaproxy(); err != nil {
 		return maskAny(err)
 	}
+
+	// Rember the current config
+	s.lastConfig = config
 
 	s.Logger.Info("Restarted haproxy")
 
