@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -133,12 +134,62 @@ func (s *Service) createConfig() (string, error) {
 	c.Section("global").Add(globalOptions...)
 	c.Section("defaults").Add(defaultsOptions...)
 
-	// Create front ends
+	// Fetch data from backend
+	frontends, err := s.Backend.FrontEnds()
+	if err != nil {
+		return "", maskAny(err)
+	}
+	services, err := s.Backend.Services()
+	if err != nil {
+		return "", maskAny(err)
+	}
 
-	// Create backends
+	// Create config for all registrations
+	frontEndSection := c.Section("frontend http-in")
+	frontEndSection.Add(
+		"bind *:80",
+		"default_backend fallback",
+	)
+	for _, fr := range frontends {
+		// Create acls
+		for _, sel := range fr.Selectors {
+			if sel.Domain != "" {
+				frontEndSection.Add(fmt.Sprintf("acl %s hdr_dom(host) -i %s", fr.aclName(), sel.Domain))
+			}
+			if sel.PathPrefix != "" {
+				frontEndSection.Add(fmt.Sprintf("acl %s path_beg %s", fr.aclName(), sel.PathPrefix))
+			}
+		}
+
+		// Create link to backend
+		frontEndSection.Add(fmt.Sprintf("use_backend %s if %s", fr.backendName(), fr.aclName()))
+
+		// Create backend
+		backendSection := c.Section(fmt.Sprintf("backend %s", fr.backendName()))
+		backendSection.Add(
+			"mode http",
+			"balance roundrobin",
+		)
+		for _, service := range services {
+			if service.Name != fr.Service {
+				continue
+			}
+			for _, b := range service.Backends {
+				backendSection.Add(fmt.Sprintf("server %s", b))
+			}
+		}
+	}
+
+	// Create fallback backend
+	fbbSection := c.Section("backend fallback")
+	fbbSection.Add(
+		"mode http",
+		"balance roundrobin",
+	)
 
 	// Render config
 	config := c.Render()
+	s.Logger.Debug("Config:\n%s", config)
 
 	// Create temp file first
 	tempFile, err := ioutil.TempFile("", "haproxy")

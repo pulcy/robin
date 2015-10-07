@@ -21,7 +21,6 @@ RUN mkdir -p /var/lib/haproxy/dev
 # Add files
 ADD ./errors/ /app/errors/
 ADD ./public_html/ /app/public_html/
-ADD ./load-balancer /app/
 
 # Create error responses
 RUN cat /app/errors/400.hdr /app/public_html/400.html > /app/errors/400.http
@@ -31,6 +30,9 @@ RUN cat /app/errors/500.hdr /app/public_html/500.html > /app/errors/500.http
 RUN cat /app/errors/502.hdr /app/public_html/50x.html > /app/errors/502.http
 RUN cat /app/errors/503.hdr /app/public_html/50x.html > /app/errors/503.http
 RUN cat /app/errors/504.hdr /app/public_html/50x.html > /app/errors/504.http
+
+# Added start process
+ADD ./load-balancer /app/
 
 # Configure volumns
 VOLUME ["/data"]

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"net/url"
 	"path"
 
@@ -9,7 +10,8 @@ import (
 )
 
 const (
-	servicePrefix = "service"
+	servicePrefix  = "service"
+	frontEndPrefix = "frontend"
 )
 
 type etcdBackend struct {
@@ -60,8 +62,55 @@ func (eb *etcdBackend) Services() ([]ServiceRegistration, error) {
 		for _, backendNode := range serviceNode.Nodes {
 			sr.Backends = append(sr.Backends, backendNode.Value)
 		}
+		list = append(list, sr)
 	}
 
 	return list, nil
+}
 
+type frontendRecord struct {
+	Selectors []frontendSelectorRecord `json:"selectors"`
+	Service   string                   `json:"service,omitempty"`
+}
+
+type frontendSelectorRecord struct {
+	Domain     string `json:"domain,omitempty"`
+	PathPrefix string `json:"path-prefix,omitempty"`
+}
+
+// Load all registered front-ends
+func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
+	etcdPath := path.Join(eb.prefix, frontEndPrefix)
+	sort := false
+	recursive := false
+	resp, err := eb.client.Get(etcdPath, sort, recursive)
+	if err != nil {
+		return nil, maskAny(err)
+	}
+	list := []FrontEndRegistration{}
+	if resp.Node == nil {
+		return list, nil
+	}
+	for _, frontEndNode := range resp.Node.Nodes {
+		rawJson := frontEndNode.Value
+		record := &frontendRecord{}
+		if err := json.Unmarshal([]byte(rawJson), record); err != nil {
+			eb.Logger.Error("Cannot unmarshal registration of %s", frontEndNode.Key)
+			continue
+		}
+
+		reg := FrontEndRegistration{
+			Name:    path.Base(frontEndNode.Key),
+			Service: record.Service,
+		}
+		for _, sel := range record.Selectors {
+			reg.Selectors = append(reg.Selectors, FrontEndSelector{
+				Domain:     sel.Domain,
+				PathPrefix: sel.PathPrefix,
+			})
+		}
+		list = append(list, reg)
+	}
+
+	return list, nil
 }
