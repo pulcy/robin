@@ -12,6 +12,12 @@ import (
 	"arvika.pulcy.com/pulcy/load-balancer/service"
 )
 
+const (
+	defaultStatsPort     = 7086
+	defaultStatsUser     = ""
+	defaultStatsPassword = ""
+)
+
 var (
 	projectVersion = "dev"
 	projectBuild   = "dev"
@@ -27,12 +33,18 @@ var (
 
 	etcdAddr        string
 	haproxyConfPath string
+	statsPort       int
+	statsUser       string
+	statsPassword   string
 )
 
 func init() {
 	logging.SetFormatter(logging.MustStringFormatter("[%{level:-5s}] %{message}"))
 	cmdMain.Flags().StringVar(&etcdAddr, "etcd-addr", "", "Address of etcd backend")
 	cmdMain.Flags().StringVar(&haproxyConfPath, "haproxy-conf", "/data/config/haproxy.cfg", "Path of haproxy config file")
+	cmdMain.Flags().IntVar(&statsPort, "stats-port", defaultStatsPort, "Port for stats page")
+	cmdMain.Flags().StringVar(&statsUser, "stats-user", defaultStatsUser, "User for stats page")
+	cmdMain.Flags().StringVar(&statsPassword, "stats-password", defaultStatsPassword, "Password for stats page")
 	cmdMain.Run = cmdMainRun
 }
 
@@ -57,6 +69,9 @@ func cmdMainRun(cmd *cobra.Command, args []string) {
 	}
 	config := service.ServiceConfig{
 		HaproxyConfPath: haproxyConfPath,
+		StatsPort:       statsPort,
+		StatsUser:       statsUser,
+		StatsPassword:   statsPassword,
 	}
 	deps := service.ServiceDependencies{
 		Logger:  log,

@@ -55,6 +55,9 @@ type ServiceConfig struct {
 	HaproxyConfPath string
 	HaproxyPath     string
 	HaproxyPidPath  string
+	StatsPort       int
+	StatsUser       string
+	StatsPassword   string
 }
 
 type ServiceDependencies struct {
@@ -159,6 +162,18 @@ func (s *Service) createConfig() (string, string, error) {
 	services, err := s.Backend.Services()
 	if err != nil {
 		return "", "", maskAny(err)
+	}
+
+	// Create stats section
+	if s.StatsPort != 0 && s.StatsUser != "" && s.StatsPassword != "" {
+		statsSection := c.Section("frontend stats")
+		statsSection.Add(
+			fmt.Sprintf("bind *:%d", s.StatsPort),
+			"stats enable",
+			"stats uri /",
+			"stats realm Haproxy\\ Statistics",
+			fmt.Sprintf("stats auth %s:%s", s.StatsUser, s.StatsPassword),
+		)
 	}
 
 	// Create config for all registrations
