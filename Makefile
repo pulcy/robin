@@ -26,9 +26,9 @@ endif
 
 SOURCES := $(shell find $(SRCDIR) -name '*.go')
 
-.PHONY: all clean deps 
+.PHONY: all clean deps docker
 
-all: $(BIN) $(BINGPG)
+all: $(BIN) docker
 
 clean:
 	rm -Rf $(BIN) $(BINGPG) $(GOBUILDDIR)
@@ -61,3 +61,5 @@ $(BIN): $(GOBUILDDIR) $(SOURCES)
 	    golang:1.4.2-cross \
 	    go build -a -installsuffix netgo -tags netgo -ldflags "-X main.projectVersion $(VERSION) -X main.projectBuild $(COMMIT)" -o /usr/code/$(PROJECT)
 
+docker: $(BIN)
+	docker build -t load-balancer .

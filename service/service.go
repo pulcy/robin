@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -22,9 +23,10 @@ const (
 
 var (
 	globalOptions = []string{
-		"chroot /var/lib/haproxy",
-		"user haproxy",
-		"group haproxy",
+		//		"chroot /var/lib/haproxy",
+		"daemon",
+		//		"user haproxy",
+		//		"group haproxy",
 		"log /dev/log local0",
 		"tune.ssl.default-dh-param 2048",
 		"ssl-default-bind-ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128:AES256:AES:CAMELLIA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA",
@@ -103,7 +105,7 @@ func (s *Service) configLoop() {
 // update the haproxy configuration
 func (s *Service) updateHaproxy() error {
 	// Create a new config (in temp path)
-	tempConf, err := s.createConfig()
+	config, tempConf, err := s.createConfig()
 	if err != nil {
 		return maskAny(err)
 	}
@@ -115,7 +117,10 @@ func (s *Service) updateHaproxy() error {
 
 	// Move config to correct place
 	os.Remove(s.HaproxyConfPath)
-	os.Rename(tempConf, s.HaproxyConfPath)
+	if err := ioutil.WriteFile(s.HaproxyConfPath, []byte(config), confPerm); err != nil {
+		s.Logger.Error("Cannot copy haproxy config to %s: %#v", s.HaproxyConfPath, err)
+		return maskAny(err)
+	}
 
 	// Restart haproxy
 	if err := s.restartHaproxy(); err != nil {
@@ -129,7 +134,7 @@ func (s *Service) updateHaproxy() error {
 
 // createConfig creates a new haproxy configuration file.
 // It returns the path of the new config file.
-func (s *Service) createConfig() (string, error) {
+func (s *Service) createConfig() (string, string, error) {
 	c := haproxy.NewConfig()
 	c.Section("global").Add(globalOptions...)
 	c.Section("defaults").Add(defaultsOptions...)
@@ -137,11 +142,11 @@ func (s *Service) createConfig() (string, error) {
 	// Fetch data from backend
 	frontends, err := s.Backend.FrontEnds()
 	if err != nil {
-		return "", maskAny(err)
+		return "", "", maskAny(err)
 	}
 	services, err := s.Backend.Services()
 	if err != nil {
-		return "", maskAny(err)
+		return "", "", maskAny(err)
 	}
 
 	// Create config for all registrations
@@ -194,13 +199,13 @@ func (s *Service) createConfig() (string, error) {
 	// Create temp file first
 	tempFile, err := ioutil.TempFile("", "haproxy")
 	if err != nil {
-		return "", maskAny(err)
+		return "", "", maskAny(err)
 	}
 	defer tempFile.Close()
 	if _, err := tempFile.WriteString(config); err != nil {
-		return "", maskAny(err)
+		return "", "", maskAny(err)
 	}
-	return tempFile.Name(), nil
+	return config, tempFile.Name(), nil
 }
 
 // validateConfig calls haproxy to validate the given config file.
@@ -226,7 +231,8 @@ func (s *Service) restartHaproxy() error {
 		args = append(args, "-sf", string(pid))
 	}
 
-	cmd := exec.Command(s.HaproxyPath, args...)
+	s.Logger.Debug("Starting haproxy with %#v", args)
+	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("%s %s", s.HaproxyPath, strings.Join(args, " ")))
 	if err := cmd.Start(); err != nil {
 		s.Logger.Error("Failed to start haproxy: %#v", err)
 		return maskAny(err)

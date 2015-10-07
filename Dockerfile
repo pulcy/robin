@@ -6,7 +6,7 @@ FROM alpine:3.2
 # ---------------------------------------------------------
 
 # Install haproxy
-RUN apk add -U haproxy 
+RUN apk add -U haproxy curl
 
 # ---------------------------------------------------------
 # Configuration
