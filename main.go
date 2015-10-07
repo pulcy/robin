@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/op/go-logging"
@@ -34,6 +35,9 @@ func main() {
 }
 
 func cmdMainRun(cmd *cobra.Command, args []string) {
+	// Prepare backend
+	backend := service.NewEtcdBackend(log, etcdUrl)
+
 	// Prepare service
 	config := service.ServiceConfig{}
 	deps := service.ServiceDependencies{

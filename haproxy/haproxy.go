@@ -44,6 +44,11 @@ func (c *Config) Render() string {
 	return strings.Join(lines, "\n")
 }
 
+// Add appends the given options to this section
+func (s *Section) Add(options ...string) {
+	s.options = append(s.options, options...)
+}
+
 // Render the entire configuration of this section and return it as a string list
 func (s *Section) render() []string {
 	result := []string{s.name}
