@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultStatsPort     = 7086
+	defaultStatsPort     = 7088
 	defaultStatsUser     = ""
 	defaultStatsPassword = ""
 )

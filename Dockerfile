@@ -41,7 +41,7 @@ VOLUME ["/dev/log"]
 # Export ports
 EXPOSE 80
 EXPOSE 443
-EXPOSE 7086
+EXPOSE 7088
 
 # Start load-balancer
 ENTRYPOINT ["/app/load-balancer"]
