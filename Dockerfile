@@ -42,4 +42,4 @@ EXPOSE 443
 EXPOSE 7086
 
 # Start load-balancer
-#ENTRYPOINT ["/app/load-balancer"]
+ENTRYPOINT ["/app/load-balancer"]
