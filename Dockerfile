@@ -5,16 +5,8 @@ FROM alpine:3.2
 # Installation
 # ---------------------------------------------------------
 
-# Install curl, supervisor & haproxy
-RUN apk add -U haproxy curl supervisor
-
-# Install confd
-ENV CONFD_VERSION 0.10.0
-RUN curl -o /usr/local/bin/confd https://github.com/kelseyhightower/confd/releases/download/v${CONFD_VERSION}/confd-${CONFD_VERSION}-darwin-amd64
-RUN chmod 0755 /usr/local/bin/confd
-
-RUN mkdir -p /etc/confd/conf.d
-RUN mkdir -p /etc/confd/templates
+# Install haproxy
+RUN apk add -U haproxy curl
 
 # ---------------------------------------------------------
 # Configuration
@@ -29,11 +21,6 @@ RUN mkdir -p /var/lib/haproxy/dev
 # Add files
 ADD ./errors/ /app/errors/
 ADD ./public_html/ /app/public_html/
-ADD ./supervisord.conf /etc/supervisord.conf
-ADD ./conf.d/haproxy-iggi.toml /etc/confd/conf.d/haproxy-iggi.toml
-ADD ./templates/haproxy-iggi.tmpl /etc/confd/templates/haproxy-iggi.tmpl
-ADD ./start.sh /app/start.sh
-ADD ./reload-haproxy.sh /app/reload-haproxy.sh
 
 # Create error responses
 RUN cat /app/errors/400.hdr /app/public_html/400.html > /app/errors/400.http
@@ -44,6 +31,9 @@ RUN cat /app/errors/502.hdr /app/public_html/50x.html > /app/errors/502.http
 RUN cat /app/errors/503.hdr /app/public_html/50x.html > /app/errors/503.http
 RUN cat /app/errors/504.hdr /app/public_html/50x.html > /app/errors/504.http
 
+# Added start process
+ADD ./load-balancer /app/
+
 # Configure volumns
 VOLUME ["/data"]
 VOLUME ["/dev/log"]
@@ -53,5 +43,5 @@ EXPOSE 80
 EXPOSE 443
 EXPOSE 7086
 
-# Start supervisord
-CMD ["/app/start.sh"]
+# Start load-balancer
+ENTRYPOINT ["/app/load-balancer"]
