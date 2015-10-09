@@ -18,11 +18,11 @@ BIN := $(BINDIR)/$(PROJECT)
 GOPATH := $(GOBUILDDIR)
 
 ifndef GOOS
-	GOOS := $(shell go env GOOS)
+	GOOS := linux
 endif
 ifndef GOARCH
-	GOARCH := $(shell go env GOARCH)
-endif	
+	GOARCH := amd64
+endif
 
 SOURCES := $(shell find $(SRCDIR) -name '*.go')
 
@@ -33,13 +33,13 @@ all: $(BIN) docker
 clean:
 	rm -Rf $(BIN) $(BINGPG) $(GOBUILDDIR)
 
-deps: 
+deps:
 	@${MAKE} -B -s $(GOBUILDDIR) $(GOBINDATA)
 
 $(GOBINDATA):
 	GOPATH=$(GOPATH) go get github.com/jteeuwen/go-bindata/...
-	
-$(GOBUILDDIR): 
+
+$(GOBUILDDIR):
 	@mkdir -p $(ORGDIR)
 	@rm -f $(REPODIR) && ln -s ../../../.. $(REPODIR)
 	@cd $(GOPATH) && pulcy go get github.com/dchest/uniuri
@@ -49,7 +49,7 @@ $(GOBUILDDIR):
 	@cd $(GOPATH) && pulcy go get github.com/spf13/pflag
 	@cd $(GOPATH) && pulcy go get github.com/coreos/go-etcd/etcd
 
-$(BIN): $(GOBUILDDIR) $(SOURCES) 
+$(BIN): $(GOBUILDDIR) $(SOURCES)
 	docker run \
 	    --rm \
 	    -v $(ROOTDIR):/usr/code \
