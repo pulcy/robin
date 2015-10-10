@@ -53,15 +53,15 @@ var (
 )
 
 type ServiceConfig struct {
-	HaproxyConfPath  string
-	HaproxyPath      string
-	HaproxyPidPath   string
-	StatsPort        int
-	StatsUser        string
-	StatsPassword    string
-	StatsSslCertPath string
-	SslCertsFolder   string
-	ForceSsl         bool
+	HaproxyConfPath string
+	HaproxyPath     string
+	HaproxyPidPath  string
+	StatsPort       int
+	StatsUser       string
+	StatsPassword   string
+	StatsSslCert    string
+	SslCertsFolder  string
+	ForceSsl        bool
 }
 
 type ServiceDependencies struct {
@@ -172,8 +172,8 @@ func (s *Service) createConfig() (string, string, error) {
 	if s.StatsPort != 0 && s.StatsUser != "" && s.StatsPassword != "" {
 		statsSection := c.Section("frontend stats")
 		statsSsl := ""
-		if s.StatsSslCertPath != "" {
-			statsSsl = fmt.Sprintf("ssl crt %s no-sslv3", s.StatsSslCertPath)
+		if s.StatsSslCert != "" {
+			statsSsl = fmt.Sprintf("ssl crt %s no-sslv3", filepath.Join(s.SslCertsFolder, s.StatsSslCert))
 		}
 		statsSection.Add(
 			fmt.Sprintf("bind *:%d %s", s.StatsPort, statsSsl),

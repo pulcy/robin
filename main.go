@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	defaultStatsPort        = 7088
-	defaultStatsUser        = ""
-	defaultStatsPassword    = ""
-	defaultStatsSslCertPath = ""
-	defaultSslCertsFolder   = "/certs/"
-	defaultForceSsl         = false
+	defaultStatsPort      = 7088
+	defaultStatsUser      = ""
+	defaultStatsPassword  = ""
+	defaultStatsSslCert   = ""
+	defaultSslCertsFolder = "/certs/"
+	defaultForceSsl       = false
 )
 
 var (
@@ -34,14 +34,14 @@ var (
 	}
 	log = logging.MustGetLogger(cmdMain.Use)
 
-	etcdAddr         string
-	haproxyConfPath  string
-	statsPort        int
-	statsUser        string
-	statsPassword    string
-	statsSslCertPath string
-	sslCertsFolder   string
-	forceSsl         bool
+	etcdAddr        string
+	haproxyConfPath string
+	statsPort       int
+	statsUser       string
+	statsPassword   string
+	statsSslCert    string
+	sslCertsFolder  string
+	forceSsl        bool
 )
 
 func init() {
@@ -51,7 +51,7 @@ func init() {
 	cmdMain.Flags().IntVar(&statsPort, "stats-port", defaultStatsPort, "Port for stats page")
 	cmdMain.Flags().StringVar(&statsUser, "stats-user", defaultStatsUser, "User for stats page")
 	cmdMain.Flags().StringVar(&statsPassword, "stats-password", defaultStatsPassword, "Password for stats page")
-	cmdMain.Flags().StringVar(&statsSslCertPath, "stats-ssl-cert", defaultStatsSslCertPath, "Path of SSL certificate for stats page")
+	cmdMain.Flags().StringVar(&statsSslCert, "stats-ssl-cert", defaultStatsSslCert, "Filename of SSL certificate for stats page (located in ss-certs)")
 	cmdMain.Flags().StringVar(&sslCertsFolder, "ssl-certs", defaultSslCertsFolder, "Folder containing SSL certificate")
 	cmdMain.Flags().BoolVar(&forceSsl, "force-ssl", defaultForceSsl, "Redirect HTTP to HTTPS")
 	cmdMain.Run = cmdMainRun
@@ -77,13 +77,13 @@ func cmdMainRun(cmd *cobra.Command, args []string) {
 		Exitf("Please specify --haproxy-conf")
 	}
 	config := service.ServiceConfig{
-		HaproxyConfPath:  haproxyConfPath,
-		StatsPort:        statsPort,
-		StatsUser:        statsUser,
-		StatsPassword:    statsPassword,
-		StatsSslCertPath: statsSslCertPath,
-		SslCertsFolder:   sslCertsFolder,
-		ForceSsl:         forceSsl,
+		HaproxyConfPath: haproxyConfPath,
+		StatsPort:       statsPort,
+		StatsUser:       statsUser,
+		StatsPassword:   statsPassword,
+		StatsSslCert:    statsSslCert,
+		SslCertsFolder:  sslCertsFolder,
+		ForceSsl:        forceSsl,
 	}
 	deps := service.ServiceDependencies{
 		Logger:  log,
