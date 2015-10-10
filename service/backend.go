@@ -29,6 +29,7 @@ type FrontEndRegistration struct {
 
 type FrontEndSelector struct {
 	Domain     string
+	SslCert    string
 	PathPrefix string
 }
 

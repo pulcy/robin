@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -59,6 +60,8 @@ type ServiceConfig struct {
 	StatsUser        string
 	StatsPassword    string
 	StatsSslCertPath string
+	SslCertsFolder   string
+	ForceSsl         bool
 }
 
 type ServiceDependencies struct {
@@ -183,15 +186,39 @@ func (s *Service) createConfig() (string, string, error) {
 
 	// Create config for all registrations
 	frontEndSection := c.Section("frontend http-in")
+	frontEndSection.Add("bind *:80")
+	// Collect certificates
+	certs := []string{}
+	for _, fr := range frontends {
+		for _, sel := range fr.Selectors {
+			if sel.SslCert != "" {
+				crt := fmt.Sprintf("crt %s", filepath.Join(s.SslCertsFolder, sel.SslCert))
+				certs = append(certs, crt)
+			}
+		}
+	}
+	if len(certs) > 0 {
+		frontEndSection.Add(
+			fmt.Sprintf("bind *:443 ssl %s no-sslv3", strings.Join(certs, " ")),
+		)
+	}
+	if s.ForceSsl {
+		frontEndSection.Add("redirect scheme https if !{ ssl_fc }")
+	}
 	frontEndSection.Add(
-		"bind *:80",
+		"reqadd X-Forwarded-Port:\\ %[dst_port]",
+		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
 	for _, fr := range frontends {
 		// Create acls
 		for _, sel := range fr.Selectors {
 			if sel.Domain != "" {
-				frontEndSection.Add(fmt.Sprintf("acl %s hdr_dom(host) -i %s", fr.aclName(), sel.Domain))
+				if sel.SslCert != "" {
+					frontEndSection.Add(fmt.Sprintf("acl %s ssl_fc_sni -i %s", fr.aclName(), sel.Domain))
+				} else {
+					frontEndSection.Add(fmt.Sprintf("acl %s hdr_dom(host) -i %s", fr.aclName(), sel.Domain))
+				}
 			}
 			if sel.PathPrefix != "" {
 				frontEndSection.Add(fmt.Sprintf("acl %s path_beg %s", fr.aclName(), sel.PathPrefix))

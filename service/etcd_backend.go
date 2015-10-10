@@ -76,6 +76,7 @@ type frontendRecord struct {
 
 type frontendSelectorRecord struct {
 	Domain     string `json:"domain,omitempty"`
+	SslCert    string `json:ssl-cert,ompitempty"`
 	PathPrefix string `json:"path-prefix,omitempty"`
 }
 
@@ -108,6 +109,7 @@ func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
 		for _, sel := range record.Selectors {
 			reg.Selectors = append(reg.Selectors, FrontEndSelector{
 				Domain:     sel.Domain,
+				SslCert:    sel.SslCert,
 				PathPrefix: sel.PathPrefix,
 			})
 		}

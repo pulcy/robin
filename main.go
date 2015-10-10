@@ -17,6 +17,8 @@ const (
 	defaultStatsUser        = ""
 	defaultStatsPassword    = ""
 	defaultStatsSslCertPath = ""
+	defaultSslCertsFolder   = "/certs/"
+	defaultForceSsl         = false
 )
 
 var (
@@ -38,6 +40,8 @@ var (
 	statsUser        string
 	statsPassword    string
 	statsSslCertPath string
+	sslCertsFolder   string
+	forceSsl         bool
 )
 
 func init() {
@@ -48,6 +52,8 @@ func init() {
 	cmdMain.Flags().StringVar(&statsUser, "stats-user", defaultStatsUser, "User for stats page")
 	cmdMain.Flags().StringVar(&statsPassword, "stats-password", defaultStatsPassword, "Password for stats page")
 	cmdMain.Flags().StringVar(&statsSslCertPath, "stats-ssl-cert", defaultStatsSslCertPath, "Path of SSL certificate for stats page")
+	cmdMain.Flags().StringVar(&sslCertsFolder, "ssl-certs", defaultSslCertsFolder, "Folder containing SSL certificate")
+	cmdMain.Flags().BoolVar(&forceSsl, "force-ssl", defaultForceSsl, "Redirect HTTP to HTTPS")
 	cmdMain.Run = cmdMainRun
 }
 
@@ -76,6 +82,8 @@ func cmdMainRun(cmd *cobra.Command, args []string) {
 		StatsUser:        statsUser,
 		StatsPassword:    statsPassword,
 		StatsSslCertPath: statsSslCertPath,
+		SslCertsFolder:   sslCertsFolder,
+		ForceSsl:         forceSsl,
 	}
 	deps := service.ServiceDependencies{
 		Logger:  log,
