@@ -76,7 +76,7 @@ type frontendRecord struct {
 
 type frontendSelectorRecord struct {
 	Domain     string `json:"domain,omitempty"`
-	SslCert    string `json:ssl-cert,omitempty"`
+	SslCert    string `json:"ssl-cert,omitempty"`
 	PathPrefix string `json:"path-prefix,omitempty"`
 }
 

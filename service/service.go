@@ -168,6 +168,12 @@ func (s *Service) createConfig() (string, string, error) {
 		return "", "", maskAny(err)
 	}
 
+	// Log services
+	s.Logger.Info("Found %d frontends", len(frontends))
+	for _, fr := range frontends {
+		s.Logger.Info("Frontend: %$v", fr)
+	}
+
 	// Create stats section
 	if s.StatsPort != 0 && s.StatsUser != "" && s.StatsPassword != "" {
 		statsSection := c.Section("frontend stats")
