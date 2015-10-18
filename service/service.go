@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	osExitDelay = time.Second * 3
-	confPerm    = os.FileMode(0664) // rw-rw-r
+	osExitDelay  = time.Second * 3
+	confPerm     = os.FileMode(0664) // rw-rw-r
+	refreshDelay = time.Second * 5
 )
 
 var (
@@ -76,6 +77,7 @@ type Service struct {
 
 	signalCounter uint32
 	lastConfig    string
+	dirty         bool
 }
 
 // NewService creates a new service instance.
@@ -94,6 +96,7 @@ func NewService(config ServiceConfig, deps ServiceDependencies) *Service {
 
 // Run starts the service and waits for OS signals to terminate it.
 func (s *Service) Run() {
+	go s.backendMonitorLoop()
 	go s.configLoop()
 	s.listenSignals()
 }
@@ -102,12 +105,27 @@ func (s *Service) Run() {
 // for changes in the backend.
 func (s *Service) configLoop() {
 	for {
-		if err := s.updateHaproxy(); err != nil {
-			s.Logger.Error("Failed to update haproxy: %#v", err)
+		if s.dirty {
+			if err := s.updateHaproxy(); err != nil {
+				s.Logger.Error("Failed to update haproxy: %#v", err)
+			} else {
+				s.dirty = false
+			}
 		}
+		select {
+		case <-time.After(refreshDelay):
+		}
+	}
+}
+
+// backendMonitorLoop monitors the configuration backend for changes.
+// When it detects a change, it set a dirty flag.
+func (s *Service) backendMonitorLoop() {
+	for {
 		if err := s.Backend.Watch(); err != nil {
 			s.Logger.Error("Failed to watch for backend changes: %#v", err)
 		}
+		s.dirty = true
 	}
 }
 
@@ -358,6 +376,8 @@ func (s *Service) restartHaproxy() error {
 
 	s.Logger.Debug("Starting haproxy with %#v", args)
 	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("%s %s", s.HaproxyPath, strings.Join(args, " ")))
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGUSR1}
+	cmd.Stdout = os.Stdout
 	if err := cmd.Start(); err != nil {
 		s.Logger.Error("Failed to start haproxy: %#v", err)
 		return maskAny(err)
