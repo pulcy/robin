@@ -75,9 +75,10 @@ type frontendRecord struct {
 }
 
 type frontendSelectorRecord struct {
-	Domain     string `json:"domain,omitempty"`
-	SslCert    string `json:"ssl-cert,omitempty"`
-	PathPrefix string `json:"path-prefix,omitempty"`
+	Domain      string `json:"domain,omitempty"`
+	SslCert     string `json:"ssl-cert,omitempty"`
+	PathPrefix  string `json:"path-prefix,omitempty"`
+	PrivatePort int    `json:"private-port,omitempty"`
 }
 
 // Load all registered front-ends
@@ -108,9 +109,10 @@ func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
 		}
 		for _, sel := range record.Selectors {
 			reg.Selectors = append(reg.Selectors, FrontEndSelector{
-				Domain:     sel.Domain,
-				SslCert:    sel.SslCert,
-				PathPrefix: sel.PathPrefix,
+				Domain:      sel.Domain,
+				SslCert:     sel.SslCert,
+				PathPrefix:  sel.PathPrefix,
+				PrivatePort: sel.PrivatePort,
 			})
 		}
 		list = append(list, reg)

@@ -28,9 +28,10 @@ type FrontEndRegistration struct {
 }
 
 type FrontEndSelector struct {
-	Domain     string
-	SslCert    string
-	PathPrefix string
+	Domain      string
+	SslCert     string
+	PathPrefix  string
+	PrivatePort int
 }
 
 // backendName creates a valid name for the backend of this registration
@@ -43,6 +44,11 @@ func (fr *FrontEndRegistration) backendName() string {
 // in haproxy.
 func (fr *FrontEndRegistration) aclName() string {
 	return fmt.Sprintf("acl_%s", cleanName(fr.Name))
+}
+
+// IsPrivate returns true if this front-end is intended to be bound to a private network only.
+func (f *FrontEndSelector) IsPrivate() bool {
+	return f.PrivatePort != 0
 }
 
 // cleanName removes invalid characters (for haproxy conf) from the given name

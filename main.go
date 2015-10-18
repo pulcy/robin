@@ -19,6 +19,7 @@ const (
 	defaultStatsSslCert   = ""
 	defaultSslCertsFolder = "/certs/"
 	defaultForceSsl       = false
+	defaultPrivateHost    = ""
 )
 
 var (
@@ -42,6 +43,7 @@ var (
 	statsSslCert    string
 	sslCertsFolder  string
 	forceSsl        bool
+	privateHost     string
 )
 
 func init() {
@@ -54,6 +56,7 @@ func init() {
 	cmdMain.Flags().StringVar(&statsSslCert, "stats-ssl-cert", defaultStatsSslCert, "Filename of SSL certificate for stats page (located in ss-certs)")
 	cmdMain.Flags().StringVar(&sslCertsFolder, "ssl-certs", defaultSslCertsFolder, "Folder containing SSL certificate")
 	cmdMain.Flags().BoolVar(&forceSsl, "force-ssl", defaultForceSsl, "Redirect HTTP to HTTPS")
+	cmdMain.Flags().StringVar(&privateHost, "private-host", defaultPrivateHost, "IP address of private network")
 	cmdMain.Run = cmdMainRun
 }
 
@@ -76,6 +79,9 @@ func cmdMainRun(cmd *cobra.Command, args []string) {
 	if haproxyConfPath == "" {
 		Exitf("Please specify --haproxy-conf")
 	}
+	if privateHost == "" {
+		Exitf("Please specify --private-host")
+	}
 	config := service.ServiceConfig{
 		HaproxyConfPath: haproxyConfPath,
 		StatsPort:       statsPort,
@@ -84,6 +90,7 @@ func cmdMainRun(cmd *cobra.Command, args []string) {
 		StatsSslCert:    statsSslCert,
 		SslCertsFolder:  sslCertsFolder,
 		ForceSsl:        forceSsl,
+		PrivateHost:     privateHost,
 	}
 	deps := service.ServiceDependencies{
 		Logger:  log,
