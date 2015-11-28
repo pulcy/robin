@@ -237,13 +237,7 @@ func (s *Service) createConfig() (string, string, error) {
 	)
 	for _, fr := range frontends {
 		// Create acls
-		hasAcl := false
-		for _, sel := range fr.Selectors {
-			if !sel.IsPrivate() {
-				createAcl(frontEndSection, fr, sel)
-				hasAcl = true
-			}
-		}
+		hasAcl := createAcl(frontEndSection, fr)
 
 		// Create link to backend
 		if hasAcl {
@@ -272,7 +266,7 @@ func (s *Service) createConfig() (string, string, error) {
 				privateFrontendSections[sel.PrivatePort] = section
 			}
 			sections[sel.PrivatePort] = section
-			createAcl(section, fr, sel)
+			createAclElement(section, fr, sel, fr.aclName())
 		}
 
 		// Create link to backend
@@ -330,19 +324,40 @@ func (s *Service) createConfig() (string, string, error) {
 	return config, tempFile.Name(), nil
 }
 
-// creteAcl create `acl` rules for the given selector and adds them
+// creteAclElement create `acl` rules for the given selector and adds them
 // to the given section
-func createAcl(section *haproxy.Section, fr FrontEndRegistration, sel FrontEndSelector) {
+func createAclElement(section *haproxy.Section, fr FrontEndRegistration, sel FrontEndSelector, aclName string) {
 	if sel.Domain != "" {
 		if sel.SslCert != "" {
-			section.Add(fmt.Sprintf("acl %s ssl_fc_sni -i %s", fr.aclName(), sel.Domain))
+			section.Add(fmt.Sprintf("acl %s ssl_fc_sni -i %s", aclName, sel.Domain))
 		} else {
-			section.Add(fmt.Sprintf("acl %s hdr_dom(host) -i %s", fr.aclName(), sel.Domain))
+			section.Add(fmt.Sprintf("acl %s hdr_dom(host) -i %s", aclName, sel.Domain))
 		}
 	}
 	if sel.PathPrefix != "" {
-		section.Add(fmt.Sprintf("acl %s path_beg %s", fr.aclName(), sel.PathPrefix))
+		section.Add(fmt.Sprintf("acl %s path_beg %s", aclName, sel.PathPrefix))
 	}
+}
+
+// creteAcl create `acl` rules for the given selector and adds them
+// to the given section
+func createAcl(section *haproxy.Section, fr FrontEndRegistration) bool {
+	index := 0
+	aclNames := []string{}
+	for _, sel := range fr.Selectors {
+		if !sel.IsPrivate() {
+			aclName := fmt.Sprintf("%s-%d", fr.aclName(), index)
+			createAclElement(section, fr, sel, aclName)
+			index++
+			aclNames = append(aclNames, aclName)
+		}
+	}
+	if index == 0 {
+		return false
+	}
+
+	section.Add(fmt.Sprintf("acl %s %s", fr.aclName(), strings.Join(aclNames, " ")))
+	return true
 }
 
 // createUseBackend creates a `use_backend` rule for the given frontend
