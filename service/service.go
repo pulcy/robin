@@ -98,6 +98,10 @@ func NewService(config ServiceConfig, deps ServiceDependencies) *Service {
 func (s *Service) Run() {
 	go s.backendMonitorLoop()
 	go s.configLoop()
+	go func() {
+		time.Sleep(time.Second)
+		s.dirty = true
+	}()
 	s.listenSignals()
 }
 
