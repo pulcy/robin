@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/url"
 	"path"
+	"strconv"
+	"strings"
 
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/op/go-logging"
@@ -58,11 +60,29 @@ func (eb *etcdBackend) Services() ([]ServiceRegistration, error) {
 		return list, nil
 	}
 	for _, serviceNode := range resp.Node.Nodes {
-		sr := ServiceRegistration{Name: path.Base(serviceNode.Key)}
+		name := path.Base(serviceNode.Key)
+		registrations := make(map[int]*ServiceRegistration)
 		for _, backendNode := range serviceNode.Nodes {
+			uniqueID := path.Base(backendNode.Key)
+			parts := strings.Split(uniqueID, ":")
+			if len(parts) < 3 {
+				eb.Logger.Warning("UniqueID malformed: '%s'", uniqueID)
+				continue
+			}
+			port, err := strconv.Atoi(parts[1])
+			if err != nil {
+				continue
+			}
+			sr, ok := registrations[port]
+			if !ok {
+				sr = &ServiceRegistration{ServiceName: name, Port: port}
+				registrations[port] = sr
+			}
 			sr.Backends = append(sr.Backends, backendNode.Value)
 		}
-		list = append(list, sr)
+		for _, v := range registrations {
+			list = append(list, *v)
+		}
 	}
 
 	return list, nil
@@ -75,10 +95,11 @@ type frontendRecord struct {
 }
 
 type frontendSelectorRecord struct {
-	Domain      string `json:"domain,omitempty"`
-	SslCert     string `json:"ssl-cert,omitempty"`
-	PathPrefix  string `json:"path-prefix,omitempty"`
-	PrivatePort int    `json:"private-port,omitempty"`
+	Domain     string `json:"domain,omitempty"`
+	SslCert    string `json:"ssl-cert,omitempty"`
+	PathPrefix string `json:"path-prefix,omitempty"`
+	Port       int    `json:"port,omitempty"`
+	Private    bool   `json:"private,omitempty"`
 }
 
 // Load all registered front-ends
@@ -102,20 +123,31 @@ func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
 			continue
 		}
 
-		reg := FrontEndRegistration{
-			Name:          path.Base(frontEndNode.Key),
-			Service:       record.Service,
-			HttpCheckPath: record.HttpCheckPath,
-		}
+		name := path.Base(frontEndNode.Key)
+		registrations := make(map[int]*FrontEndRegistration)
 		for _, sel := range record.Selectors {
+			port := sel.Port
+			reg, ok := registrations[port]
+			if !ok {
+				reg := &FrontEndRegistration{
+					Name:          name,
+					Service:       record.Service,
+					Port:          port,
+					HttpCheckPath: record.HttpCheckPath,
+				}
+				registrations[port] = reg
+			}
 			reg.Selectors = append(reg.Selectors, FrontEndSelector{
-				Domain:      sel.Domain,
-				SslCert:     sel.SslCert,
-				PathPrefix:  sel.PathPrefix,
-				PrivatePort: sel.PrivatePort,
+				Domain:     sel.Domain,
+				SslCert:    sel.SslCert,
+				PathPrefix: sel.PathPrefix,
+				Port:       sel.Port,
+				Private:    sel.Private,
 			})
 		}
-		list = append(list, reg)
+		for _, reg := range registrations {
+			list = append(list, *reg)
+		}
 	}
 
 	return list, nil

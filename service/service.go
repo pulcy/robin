@@ -214,72 +214,56 @@ func (s *Service) createConfig() (string, string, error) {
 	}
 
 	// Create config for all registrations
-	frontEndSection := c.Section("frontend http-in")
-	frontEndSection.Add("bind *:80")
+	publicFrontEndSection := c.Section("frontend http-in")
+	publicFrontEndSection.Add("bind *:80")
 	// Collect certificates
 	certs := []string{}
 	for _, fr := range frontends {
 		for _, sel := range fr.Selectors {
-			if !sel.IsPrivate() && sel.SslCert != "" {
+			if !sel.Private && sel.SslCert != "" {
 				crt := fmt.Sprintf("crt %s", filepath.Join(s.SslCertsFolder, sel.SslCert))
 				certs = append(certs, crt)
 			}
 		}
 	}
 	if len(certs) > 0 {
-		frontEndSection.Add(
+		publicFrontEndSection.Add(
 			fmt.Sprintf("bind *:443 ssl %s no-sslv3", strings.Join(certs, " ")),
 		)
 	}
 	if s.ForceSsl {
-		frontEndSection.Add("redirect scheme https if !{ ssl_fc }")
+		publicFrontEndSection.Add("redirect scheme https if !{ ssl_fc }")
 	}
-	frontEndSection.Add(
+	publicFrontEndSection.Add(
 		"reqadd X-Forwarded-Port:\\ %[dst_port]",
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
 	for _, fr := range frontends {
 		// Create acls
-		hasAcl := createAcl(frontEndSection, fr)
+		hasAcl := createAcl(publicFrontEndSection, fr, false)
 
 		// Create link to backend
 		if hasAcl {
-			createUseBackend(frontEndSection, fr)
+			createUseBackend(publicFrontEndSection, fr)
 		}
 	}
 
-	// Create private frontends
-	privateFrontendSections := make(map[int]*haproxy.Section)
+	// Create config for private services
+	privateFrontEndSection := c.Section("frontend http-in-private")
+	privateFrontEndSection.Add("bind *:81")
+	privateFrontEndSection.Add(
+		"reqadd X-Forwarded-Port:\\ %[dst_port]",
+		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
+		"default_backend fallback",
+	)
 	for _, fr := range frontends {
-		sections := make(map[int]*haproxy.Section)
-		for _, sel := range fr.Selectors {
-			if !sel.IsPrivate() {
-				continue
-			}
-			rule := createAclElement(fr, sel)
-			if rule == "" {
-				continue
-			}
-			section, ok := privateFrontendSections[sel.PrivatePort]
-			if !ok {
-				// Front-end does not yet exist, create it
-				section = c.Section(fmt.Sprintf("frontend private-http-in-%d", sel.PrivatePort))
-				section.Add(
-					fmt.Sprintf("bind %s:%d", s.PrivateHost, sel.PrivatePort),
-					"reqadd X-Forwarded-Port:\\ %[dst_port]",
-					"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
-					"default_backend fallback",
-				)
-				privateFrontendSections[sel.PrivatePort] = section
-			}
-			sections[sel.PrivatePort] = section
-			section.Add(fmt.Sprintf("acl %s %s", fr.aclName(), rule))
-		}
+		// Create acls
+		hasAcl := createAcl(privateFrontEndSection, fr, true)
 
 		// Create link to backend
-		for _, section := range sections {
-			createUseBackend(section, fr)
+		if hasAcl {
+			createUseBackend(privateFrontEndSection, fr)
 		}
 	}
 
@@ -295,11 +279,11 @@ func (s *Service) createConfig() (string, string, error) {
 			backendSection.Add(fmt.Sprintf("option httpchk GET %s", fr.HttpCheckPath))
 		}
 		for _, service := range services {
-			if service.Name != fr.Service {
+			if !fr.Match(service) {
 				continue
 			}
 			for i, b := range service.Backends {
-				id := fmt.Sprintf("%s-%d", service.Name, i)
+				id := fmt.Sprintf("%s-%d-%d", service.ServiceName, service.Port, i)
 				check := ""
 				if fr.HttpCheckPath != "" {
 					check = "check"
@@ -350,10 +334,10 @@ func createAclElement(fr FrontEndRegistration, sel FrontEndSelector) string {
 
 // creteAcl create `acl` rules for the given selector and adds them
 // to the given section
-func createAcl(section *haproxy.Section, fr FrontEndRegistration) bool {
+func createAcl(section *haproxy.Section, fr FrontEndRegistration, private bool) bool {
 	rules := []string{}
 	for _, sel := range fr.Selectors {
-		if !sel.IsPrivate() {
+		if sel.Private == private {
 			rules = append(rules, createAclElement(fr, sel))
 		}
 	}
