@@ -69,8 +69,9 @@ func (eb *etcdBackend) Services() ([]ServiceRegistration, error) {
 				eb.Logger.Warning("UniqueID malformed: '%s'", uniqueID)
 				continue
 			}
-			port, err := strconv.Atoi(parts[1])
+			port, err := strconv.Atoi(parts[2])
 			if err != nil {
+				eb.Logger.Warning("Failed to parse port: '%s'", parts[2])
 				continue
 			}
 			sr, ok := registrations[port]
