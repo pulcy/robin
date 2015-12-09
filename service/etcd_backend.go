@@ -129,7 +129,7 @@ func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
 			port := sel.Port
 			reg, ok := registrations[port]
 			if !ok {
-				reg := &FrontEndRegistration{
+				reg = &FrontEndRegistration{
 					Name:          name,
 					Service:       record.Service,
 					Port:          port,
