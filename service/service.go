@@ -194,7 +194,11 @@ func (s *Service) createConfig() (string, string, error) {
 	// Log services
 	s.Logger.Info("Found %d frontends", len(frontends))
 	for _, fr := range frontends {
-		s.Logger.Info("Frontend: %$v", fr)
+		s.Logger.Info("Frontend: %#v", fr)
+	}
+	s.Logger.Info("Found %d services", len(services))
+	for _, srv := range services {
+		s.Logger.Info("Service: %#v", srv)
 	}
 
 	// Create stats section
