@@ -217,6 +217,17 @@ func (s *Service) createConfig() (string, string, error) {
 		)
 	}
 
+	// Create user lists for each frontend (that needs it)
+	for _, fr := range frontends {
+		if len(fr.Users) == 0 {
+			continue
+		}
+		userListSection := c.Section("userlist " + fr.userListName())
+		for _, user := range fr.Users {
+			userListSection.Add(fmt.Sprintf("user %s password %s", user.Name, user.PasswordHash))
+		}
+	}
+
 	// Create config for all registrations
 	publicFrontEndSection := c.Section("frontend http-in")
 	publicFrontEndSection.Add("bind *:80")
@@ -344,6 +355,10 @@ func createAcl(section *haproxy.Section, fr FrontEndRegistration, private bool) 
 		if sel.Private == private {
 			rules = append(rules, createAclElement(fr, sel))
 		}
+	}
+	if len(fr.Users) > 0 {
+		httpAuth := fmt.Sprintf("http_auth(%s)", fr.userListName())
+		rules = append(rules, httpAuth)
 	}
 	if len(rules) == 0 {
 		return false

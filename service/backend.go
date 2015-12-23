@@ -27,6 +27,7 @@ type FrontEndRegistration struct {
 	Service       string
 	Port          int
 	HttpCheckPath string
+	Users         []User
 }
 
 type FrontEndSelector struct {
@@ -35,6 +36,11 @@ type FrontEndSelector struct {
 	PathPrefix string
 	Port       int
 	Private    bool
+}
+
+type User struct {
+	Name         string
+	PasswordHash string
 }
 
 // Does the given frontend registration match the given service registration?
@@ -59,6 +65,12 @@ func (fr *FrontEndRegistration) backendName() string {
 // in haproxy.
 func (fr *FrontEndRegistration) aclName() string {
 	return fmt.Sprintf("acl_%s_%d", cleanName(fr.Name), fr.Port)
+}
+
+// userListName creates a valid name for the userlist of this registration
+// in haproxy.
+func (fr *FrontEndRegistration) userListName() string {
+	return fmt.Sprintf("userlist_%s_%d", cleanName(fr.Name), fr.Port)
 }
 
 // cleanName removes invalid characters (for haproxy conf) from the given name

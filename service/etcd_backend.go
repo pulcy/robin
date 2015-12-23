@@ -93,6 +93,7 @@ type frontendRecord struct {
 	Selectors     []frontendSelectorRecord `json:"selectors"`
 	Service       string                   `json:"service,omitempty"`
 	HttpCheckPath string                   `json:"http-check-path,omitempty"`
+	Users         []userRecord             `json:"users,omitempty"`
 }
 
 type frontendSelectorRecord struct {
@@ -101,6 +102,11 @@ type frontendSelectorRecord struct {
 	PathPrefix string `json:"path-prefix,omitempty"`
 	Port       int    `json:"port,omitempty"`
 	Private    bool   `json:"private,omitempty"`
+}
+
+type userRecord struct {
+	Name         string `json:"user"`
+	PasswordHash string `json:"pwhash"`
 }
 
 // Load all registered front-ends
@@ -135,6 +141,12 @@ func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
 					Service:       record.Service,
 					Port:          port,
 					HttpCheckPath: record.HttpCheckPath,
+				}
+				for _, user := range record.Users {
+					reg.Users = append(reg.Users, User{
+						Name:         user.Name,
+						PasswordHash: user.PasswordHash,
+					})
 				}
 				registrations[port] = reg
 			}
