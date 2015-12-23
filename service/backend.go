@@ -55,16 +55,34 @@ func (fr FrontEndRegistration) Match(sr ServiceRegistration) bool {
 	return fr.Port == sr.Port
 }
 
+func (fr *FrontEndRegistration) HasPublicSelectors() bool {
+	for _, sel := range fr.Selectors {
+		if !sel.Private {
+			return true
+		}
+	}
+	return false
+}
+
+func (fr *FrontEndRegistration) HasPrivateSelectors() bool {
+	for _, sel := range fr.Selectors {
+		if sel.Private {
+			return true
+		}
+	}
+	return false
+}
+
 // backendName creates a valid name for the backend of this registration
 // in haproxy.
-func (fr *FrontEndRegistration) backendName() string {
-	return fmt.Sprintf("backend_%s_%d", cleanName(fr.Name), fr.Port)
+func (fr *FrontEndRegistration) backendName(private bool) string {
+	return fmt.Sprintf("backend_%s_%d_%s", cleanName(fr.Name), fr.Port, visibilityPostfix(private))
 }
 
 // aclName creates a valid name for the acl of this registration
 // in haproxy.
-func (fr *FrontEndRegistration) aclName() string {
-	return fmt.Sprintf("acl_%s_%d", cleanName(fr.Name), fr.Port)
+func (fr *FrontEndRegistration) aclName(private bool) string {
+	return fmt.Sprintf("acl_%s_%d_%s", cleanName(fr.Name), fr.Port, visibilityPostfix(private))
 }
 
 // userListName creates a valid name for the userlist of this registration
@@ -76,4 +94,11 @@ func (fr *FrontEndRegistration) userListName(selectorIndex int) string {
 // cleanName removes invalid characters (for haproxy conf) from the given name
 func cleanName(s string) string {
 	return s // TODO
+}
+
+func visibilityPostfix(private bool) string {
+	if private {
+		return "private"
+	}
+	return "public"
 }

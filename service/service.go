@@ -262,7 +262,7 @@ func (s *Service) createConfig() (string, string, error) {
 
 		// Create link to backend
 		if hasAcl {
-			createUseBackend(publicFrontEndSection, fr)
+			createUseBackend(publicFrontEndSection, fr, false)
 		}
 	}
 
@@ -280,32 +280,47 @@ func (s *Service) createConfig() (string, string, error) {
 
 		// Create link to backend
 		if hasAcl {
-			createUseBackend(privateFrontEndSection, fr)
+			createUseBackend(privateFrontEndSection, fr, true)
 		}
 	}
 
 	// Create backends
 	for _, fr := range frontends {
-		// Create backend
-		backendSection := c.Section(fmt.Sprintf("backend %s", fr.backendName()))
-		backendSection.Add(
-			"mode http",
-			"balance roundrobin",
-		)
-		if fr.HttpCheckPath != "" {
-			backendSection.Add(fmt.Sprintf("option httpchk GET %s", fr.HttpCheckPath))
-		}
-		for _, service := range services {
-			if !fr.Match(service) {
-				continue
+		for _, private := range []bool{false, true} {
+			// Create backend
+			backendSection := c.Section(fmt.Sprintf("backend %s", fr.backendName(private)))
+			backendSection.Add(
+				"mode http",
+				"balance roundrobin",
+			)
+			if fr.HttpCheckPath != "" {
+				backendSection.Add(fmt.Sprintf("option httpchk GET %s", fr.HttpCheckPath))
 			}
-			for i, b := range service.Backends {
-				id := fmt.Sprintf("%s-%d-%d", service.ServiceName, service.Port, i)
-				check := ""
-				if fr.HttpCheckPath != "" {
-					check = "check"
+
+			authentication := false
+			for selIndex, sel := range fr.Selectors {
+				if len(sel.Users) > 0 {
+					authentication = true
+					backendSection.Add(fmt.Sprintf("acl auth_ok_%d http_auth(%s)", selIndex, fr.userListName(selIndex)))
+					backendSection.Add(fmt.Sprintf("http-request allow if auth_ok_%d", selIndex))
 				}
-				backendSection.Add(fmt.Sprintf("server %s %s %s", id, b, check))
+			}
+			if authentication {
+				backendSection.Add("http-request auth")
+			}
+
+			for _, service := range services {
+				if !fr.Match(service) {
+					continue
+				}
+				for i, b := range service.Backends {
+					id := fmt.Sprintf("%s-%d-%d", service.ServiceName, service.Port, i)
+					check := ""
+					if fr.HttpCheckPath != "" {
+						check = "check"
+					}
+					backendSection.Add(fmt.Sprintf("server %s %s %s", id, b, check))
+				}
 			}
 		}
 	}
@@ -346,10 +361,6 @@ func createAclElement(fr FrontEndRegistration, sel FrontEndSelector, selIndex in
 	if sel.PathPrefix != "" {
 		result = append(result, fmt.Sprintf("path_beg %s", sel.PathPrefix))
 	}
-	if len(sel.Users) > 0 {
-		httpAuth := fmt.Sprintf("http_auth(%s)", fr.userListName(selIndex))
-		result = append(result, httpAuth)
-	}
 	return strings.Join(result, " ")
 }
 
@@ -366,14 +377,14 @@ func createAcl(section *haproxy.Section, fr FrontEndRegistration, private bool) 
 		return false
 	}
 
-	section.Add(fmt.Sprintf("acl %s %s", fr.aclName(), strings.Join(rules, " ")))
+	section.Add(fmt.Sprintf("acl %s %s", fr.aclName(private), strings.Join(rules, " ")))
 	return true
 }
 
 // createUseBackend creates a `use_backend` rule for the given frontend
 // and adds it to the given section
-func createUseBackend(section *haproxy.Section, fr FrontEndRegistration) {
-	section.Add(fmt.Sprintf("use_backend %s if %s", fr.backendName(), fr.aclName()))
+func createUseBackend(section *haproxy.Section, fr FrontEndRegistration, private bool) {
+	section.Add(fmt.Sprintf("use_backend %s if %s", fr.backendName(private), fr.aclName(private)))
 }
 
 // validateConfig calls haproxy to validate the given config file.
