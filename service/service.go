@@ -219,12 +219,14 @@ func (s *Service) createConfig() (string, string, error) {
 
 	// Create user lists for each frontend (that needs it)
 	for _, fr := range frontends {
-		if len(fr.Users) == 0 {
-			continue
-		}
-		userListSection := c.Section("userlist " + fr.userListName())
-		for _, user := range fr.Users {
-			userListSection.Add(fmt.Sprintf("user %s password %s", user.Name, user.PasswordHash))
+		for selIndex, sel := range fr.Selectors {
+			if len(sel.Users) == 0 {
+				continue
+			}
+			userListSection := c.Section("userlist " + fr.userListName(selIndex))
+			for _, user := range sel.Users {
+				userListSection.Add(fmt.Sprintf("user %s password %s", user.Name, user.PasswordHash))
+			}
 		}
 	}
 
@@ -332,7 +334,7 @@ func (s *Service) createConfig() (string, string, error) {
 }
 
 // creteAclElement create `acl` rules for the given selector
-func createAclElement(fr FrontEndRegistration, sel FrontEndSelector) string {
+func createAclElement(fr FrontEndRegistration, sel FrontEndSelector, selIndex int) string {
 	result := []string{}
 	if sel.Domain != "" {
 		if sel.SslCert != "" {
@@ -344,6 +346,10 @@ func createAclElement(fr FrontEndRegistration, sel FrontEndSelector) string {
 	if sel.PathPrefix != "" {
 		result = append(result, fmt.Sprintf("path_beg %s", sel.PathPrefix))
 	}
+	if len(sel.Users) > 0 {
+		httpAuth := fmt.Sprintf("http_auth(%s)", fr.userListName(selIndex))
+		result = append(result, httpAuth)
+	}
 	return strings.Join(result, " ")
 }
 
@@ -351,14 +357,10 @@ func createAclElement(fr FrontEndRegistration, sel FrontEndSelector) string {
 // to the given section
 func createAcl(section *haproxy.Section, fr FrontEndRegistration, private bool) bool {
 	rules := []string{}
-	for _, sel := range fr.Selectors {
+	for selIndex, sel := range fr.Selectors {
 		if sel.Private == private {
-			rules = append(rules, createAclElement(fr, sel))
+			rules = append(rules, createAclElement(fr, sel, selIndex))
 		}
-	}
-	if len(fr.Users) > 0 {
-		httpAuth := fmt.Sprintf("http_auth(%s)", fr.userListName())
-		rules = append(rules, httpAuth)
 	}
 	if len(rules) == 0 {
 		return false

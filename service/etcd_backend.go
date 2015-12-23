@@ -93,15 +93,15 @@ type frontendRecord struct {
 	Selectors     []frontendSelectorRecord `json:"selectors"`
 	Service       string                   `json:"service,omitempty"`
 	HttpCheckPath string                   `json:"http-check-path,omitempty"`
-	Users         []userRecord             `json:"users,omitempty"`
 }
 
 type frontendSelectorRecord struct {
-	Domain     string `json:"domain,omitempty"`
-	SslCert    string `json:"ssl-cert,omitempty"`
-	PathPrefix string `json:"path-prefix,omitempty"`
-	Port       int    `json:"port,omitempty"`
-	Private    bool   `json:"private,omitempty"`
+	Domain     string       `json:"domain,omitempty"`
+	SslCert    string       `json:"ssl-cert,omitempty"`
+	PathPrefix string       `json:"path-prefix,omitempty"`
+	Port       int          `json:"port,omitempty"`
+	Private    bool         `json:"private,omitempty"`
+	Users      []userRecord `json:"users,omitempty"`
 }
 
 type userRecord struct {
@@ -142,21 +142,22 @@ func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
 					Port:          port,
 					HttpCheckPath: record.HttpCheckPath,
 				}
-				for _, user := range record.Users {
-					reg.Users = append(reg.Users, User{
-						Name:         user.Name,
-						PasswordHash: user.PasswordHash,
-					})
-				}
 				registrations[port] = reg
 			}
-			reg.Selectors = append(reg.Selectors, FrontEndSelector{
+			frSel := FrontEndSelector{
 				Domain:     sel.Domain,
 				SslCert:    sel.SslCert,
 				PathPrefix: sel.PathPrefix,
 				Port:       sel.Port,
 				Private:    sel.Private,
-			})
+			}
+			for _, user := range sel.Users {
+				frSel.Users = append(frSel.Users, User{
+					Name:         user.Name,
+					PasswordHash: user.PasswordHash,
+				})
+			}
+			reg.Selectors = append(reg.Selectors, frSel)
 		}
 		for _, reg := range registrations {
 			list = append(list, *reg)
