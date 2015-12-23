@@ -287,6 +287,15 @@ func (s *Service) createConfig() (string, string, error) {
 	// Create backends
 	for _, fr := range frontends {
 		for _, private := range []bool{false, true} {
+			if private {
+				if !fr.HasPrivateSelectors() {
+					continue
+				}
+			} else {
+				if !fr.HasPublicSelectors() {
+					continue
+				}
+			}
 			// Create backend
 			backendSection := c.Section(fmt.Sprintf("backend %s", fr.backendName(private)))
 			backendSection.Add(
