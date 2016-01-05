@@ -416,7 +416,7 @@ func (s *Service) restartHaproxy() error {
 		s.HaproxyPidPath,
 	}
 	if pid, err := ioutil.ReadFile(s.HaproxyPidPath); err == nil {
-		args = append(args, "-st", string(pid))
+		args = append(args, "-sf", string(pid))
 	}
 
 	s.Logger.Debug("Starting haproxy with %#v", args)
