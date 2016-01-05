@@ -36,6 +36,10 @@ type FrontEndRegistration struct {
 	HttpCheckPath string
 }
 
+func (fr FrontEndRegistration) FullString() string {
+	return fmt.Sprintf("%s-%s-%d-%s-%#v", fr.Name, fr.Service, fr.Port, fr.HttpCheckPath, fr.Selectors)
+}
+
 type FrontEndRegistrations []FrontEndRegistration
 
 type FrontEndSelector struct {
@@ -120,8 +124,8 @@ func (list FrontEndRegistrations) Len() int {
 // Less reports whether the element with
 // index i should sort before the element with index j.
 func (list FrontEndRegistrations) Less(i, j int) bool {
-	a := list[i].backendName(false)
-	b := list[j].backendName(false)
+	a := list[i].FullString()
+	b := list[j].FullString()
 	return strings.Compare(a, b) < 0
 }
 
