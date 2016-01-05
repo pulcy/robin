@@ -147,11 +147,13 @@ func (s *Service) updateHaproxy() error {
 
 	// If nothing has changed, don't do anything
 	if s.lastConfig == config {
+		s.Logger.Debug("Config has not changed")
 		return nil
 	}
 
 	// Validate the config
 	if err := s.validateConfig(tempConf); err != nil {
+		s.Logger.Error("haproxy config validation failed: %#v", err)
 		return maskAny(err)
 	}
 
