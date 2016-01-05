@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -189,12 +188,12 @@ func (s *Service) createConfig() (string, string, error) {
 	if err != nil {
 		return "", "", maskAny(err)
 	}
-	sort.Sort(frontends)
+	frontends.Sort()
 	services, err := s.Backend.Services()
 	if err != nil {
 		return "", "", maskAny(err)
 	}
-	sort.Sort(services)
+	services.Sort()
 
 	// Log services
 	s.Logger.Info("Found %d frontends", len(frontends))

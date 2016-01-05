@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -28,9 +29,16 @@ func (sr ServiceRegistration) FullString() string {
 
 type ServiceRegistrations []ServiceRegistration
 
+func (list ServiceRegistrations) Sort() {
+	sort.Sort(list)
+	for _, sr := range list {
+		sort.Strings(sr.Backends)
+	}
+}
+
 type FrontEndRegistration struct {
 	Name          string
-	Selectors     []FrontEndSelector
+	Selectors     FrontEndSelectors
 	Service       string
 	Port          int
 	HttpCheckPath string
@@ -42,19 +50,50 @@ func (fr FrontEndRegistration) FullString() string {
 
 type FrontEndRegistrations []FrontEndRegistration
 
+func (list FrontEndRegistrations) Sort() {
+	sort.Sort(list)
+	for _, fr := range list {
+		fr.Selectors.Sort()
+	}
+}
+
 type FrontEndSelector struct {
 	Domain     string
 	SslCert    string
 	PathPrefix string
 	Port       int
 	Private    bool
-	Users      []User
+	Users      Users
+}
+
+func (fs FrontEndSelector) FullString() string {
+	users := []string{}
+	for _, user := range fs.Users {
+		users = append(users, user.FullString())
+	}
+	sort.Strings(users)
+	return fmt.Sprintf("%s-%s-%s-%d-%v-%#v", fs.Domain, fs.SslCert, fs.PathPrefix, fs.Port, fs.Private, users)
+}
+
+type FrontEndSelectors []FrontEndSelector
+
+func (list FrontEndSelectors) Sort() {
+	sort.Sort(list)
+	for _, fs := range list {
+		sort.Sort(fs.Users)
+	}
 }
 
 type User struct {
 	Name         string
 	PasswordHash string
 }
+
+func (user User) FullString() string {
+	return fmt.Sprintf("%s-%s", user.Name, user.PasswordHash)
+}
+
+type Users []User
 
 // Does the given frontend registration match the given service registration?
 func (fr FrontEndRegistration) Match(sr ServiceRegistration) bool {
@@ -135,6 +174,24 @@ func (list FrontEndRegistrations) Swap(i, j int) {
 }
 
 // Len is the number of elements in the collection.
+func (list FrontEndSelectors) Len() int {
+	return len(list)
+}
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (list FrontEndSelectors) Less(i, j int) bool {
+	a := list[i].FullString()
+	b := list[j].FullString()
+	return strings.Compare(a, b) < 0
+}
+
+// Swap swaps the elements with indexes i and j.
+func (list FrontEndSelectors) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+
+// Len is the number of elements in the collection.
 func (list ServiceRegistrations) Len() int {
 	return len(list)
 }
@@ -149,5 +206,23 @@ func (list ServiceRegistrations) Less(i, j int) bool {
 
 // Swap swaps the elements with indexes i and j.
 func (list ServiceRegistrations) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+
+// Len is the number of elements in the collection.
+func (list Users) Len() int {
+	return len(list)
+}
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (list Users) Less(i, j int) bool {
+	a := list[i].FullString()
+	b := list[j].FullString()
+	return strings.Compare(a, b) < 0
+}
+
+// Swap swaps the elements with indexes i and j.
+func (list Users) Swap(i, j int) {
 	list[i], list[j] = list[j], list[i]
 }
