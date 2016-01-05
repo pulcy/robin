@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 )
 
 type Backend interface {
@@ -9,10 +10,10 @@ type Backend interface {
 	Watch() error
 
 	// Load all registered services
-	Services() ([]ServiceRegistration, error)
+	Services() (ServiceRegistrations, error)
 
 	// Load all registered front-ends
-	FrontEnds() ([]FrontEndRegistration, error)
+	FrontEnds() (FrontEndRegistrations, error)
 }
 
 type ServiceRegistration struct {
@@ -21,6 +22,12 @@ type ServiceRegistration struct {
 	Backends    []string // List of ip:port for the backend of this service
 }
 
+func (sr ServiceRegistration) FullString() string {
+	return fmt.Sprintf("%s-%d-%#v", sr.ServiceName, sr.Port, sr.Backends)
+}
+
+type ServiceRegistrations []ServiceRegistration
+
 type FrontEndRegistration struct {
 	Name          string
 	Selectors     []FrontEndSelector
@@ -28,6 +35,8 @@ type FrontEndRegistration struct {
 	Port          int
 	HttpCheckPath string
 }
+
+type FrontEndRegistrations []FrontEndRegistration
 
 type FrontEndSelector struct {
 	Domain     string
@@ -101,4 +110,40 @@ func visibilityPostfix(private bool) string {
 		return "private"
 	}
 	return "public"
+}
+
+// Len is the number of elements in the collection.
+func (list FrontEndRegistrations) Len() int {
+	return len(list)
+}
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (list FrontEndRegistrations) Less(i, j int) bool {
+	a := list[i].backendName(false)
+	b := list[j].backendName(false)
+	return strings.Compare(a, b) < 0
+}
+
+// Swap swaps the elements with indexes i and j.
+func (list FrontEndRegistrations) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+
+// Len is the number of elements in the collection.
+func (list ServiceRegistrations) Len() int {
+	return len(list)
+}
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (list ServiceRegistrations) Less(i, j int) bool {
+	a := list[i].FullString()
+	b := list[j].FullString()
+	return strings.Compare(a, b) < 0
+}
+
+// Swap swaps the elements with indexes i and j.
+func (list ServiceRegistrations) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
 }

@@ -47,7 +47,7 @@ func (eb *etcdBackend) Watch() error {
 }
 
 // Load all registered services
-func (eb *etcdBackend) Services() ([]ServiceRegistration, error) {
+func (eb *etcdBackend) Services() (ServiceRegistrations, error) {
 	etcdPath := path.Join(eb.prefix, servicePrefix)
 	sort := false
 	recursive := true
@@ -55,7 +55,7 @@ func (eb *etcdBackend) Services() ([]ServiceRegistration, error) {
 	if err != nil {
 		return nil, maskAny(err)
 	}
-	list := []ServiceRegistration{}
+	list := ServiceRegistrations{}
 	if resp.Node == nil {
 		return list, nil
 	}
@@ -110,7 +110,7 @@ type userRecord struct {
 }
 
 // Load all registered front-ends
-func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
+func (eb *etcdBackend) FrontEnds() (FrontEndRegistrations, error) {
 	etcdPath := path.Join(eb.prefix, frontEndPrefix)
 	sort := false
 	recursive := false
@@ -118,7 +118,7 @@ func (eb *etcdBackend) FrontEnds() ([]FrontEndRegistration, error) {
 	if err != nil {
 		return nil, maskAny(err)
 	}
-	list := []FrontEndRegistration{}
+	list := FrontEndRegistrations{}
 	if resp.Node == nil {
 		return list, nil
 	}

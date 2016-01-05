@@ -58,8 +58,8 @@ $(BIN): $(GOBUILDDIR) $(SOURCES)
 	    -e GOARCH=$(GOARCH) \
 	    -e CGO_ENABLED=0 \
 	    -w /usr/code/ \
-	    golang:1.4.2-cross \
-	    go build -a -installsuffix netgo -tags netgo -ldflags "-X main.projectVersion $(VERSION) -X main.projectBuild $(COMMIT)" -o /usr/code/$(PROJECT)
+	    golang:1.5.1 \
+	    go build -a -installsuffix netgo -tags netgo -ldflags "-X main.projectVersion=$(VERSION) -X main.projectBuild=$(COMMIT)" -o /usr/code/$(PROJECT)
 
 docker: $(BIN)
 	docker build -t load-balancer .
