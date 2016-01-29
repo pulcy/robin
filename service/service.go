@@ -230,11 +230,15 @@ func (s *Service) createConfig() (string, string, error) {
 	publicFrontEndSection.Add("bind *:80")
 	// Collect certificates
 	certs := []string{}
+	certsSet := make(map[string]struct{})
 	for _, sr := range services {
 		for _, sel := range sr.Selectors {
 			if !sel.Private && sel.SslCert != "" {
-				crt := fmt.Sprintf("crt %s", filepath.Join(s.SslCertsFolder, sel.SslCert))
-				certs = append(certs, crt)
+				if _, ok := certsSet[sel.SslCert]; !ok {
+					crt := fmt.Sprintf("crt %s", filepath.Join(s.SslCertsFolder, sel.SslCert))
+					certs = append(certs, crt)
+					certsSet[sel.SslCert] = struct{}{}
+				}
 			}
 		}
 	}
@@ -251,14 +255,16 @@ func (s *Service) createConfig() (string, string, error) {
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
+	servicesWithAcl := ServiceRegistrations{}
 	for _, sr := range services {
 		// Create acls
-		hasAcl := createAcl(publicFrontEndSection, sr, false)
-
-		// Create link to backend
-		if hasAcl {
-			createUseBackend(publicFrontEndSection, sr, false)
+		if hasAcl := createAcl(publicFrontEndSection, sr, false); hasAcl {
+			servicesWithAcl = append(servicesWithAcl, sr)
 		}
+	}
+	for _, sr := range servicesWithAcl {
+		// Create link to backend
+		createUseBackend(publicFrontEndSection, sr, false)
 	}
 
 	// Create config for private services
@@ -269,14 +275,16 @@ func (s *Service) createConfig() (string, string, error) {
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
+	servicesWithAcl = ServiceRegistrations{}
 	for _, sr := range services {
 		// Create acls
-		hasAcl := createAcl(privateFrontEndSection, sr, true)
-
-		// Create link to backend
-		if hasAcl {
-			createUseBackend(privateFrontEndSection, sr, true)
+		if hasAcl := createAcl(privateFrontEndSection, sr, true); hasAcl {
+			servicesWithAcl = append(servicesWithAcl, sr)
 		}
+	}
+	for _, sr := range servicesWithAcl {
+		// Create link to backend
+		createUseBackend(privateFrontEndSection, sr, true)
 	}
 
 	// Create backends
