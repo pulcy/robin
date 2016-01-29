@@ -190,7 +190,7 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 				if sel.Port != 0 && sel.Port != service.ServicePort {
 					continue
 				}
-				frSel := ServiceSelector{
+				srSel := ServiceSelector{
 					Weight:     sel.Weight,
 					Domain:     sel.Domain,
 					SslCert:    sel.SslCert,
@@ -198,13 +198,14 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 					Private:    sel.Private,
 				}
 				for _, user := range sel.Users {
-					frSel.Users = append(frSel.Users, User{
+					srSel.Users = append(srSel.Users, User{
 						Name:         user.Name,
 						PasswordHash: user.PasswordHash,
 					})
 				}
-				service.Selectors = append(service.Selectors, frSel)
-
+				if !service.Selectors.Contains(srSel) {
+					service.Selectors = append(service.Selectors, srSel)
+				}
 			}
 		}
 		if len(service.Selectors) > 0 {

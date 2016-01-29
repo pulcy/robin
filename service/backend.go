@@ -101,6 +101,16 @@ func (list ServiceSelectors) Sort() {
 	}
 }
 
+func (list ServiceSelectors) Contains(sel ServiceSelector) bool {
+	q := sel.FullString()
+	for _, ss := range list {
+		if ss.FullString() == q {
+			return true
+		}
+	}
+	return false
+}
+
 type User struct {
 	Name         string
 	PasswordHash string
