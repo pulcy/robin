@@ -28,11 +28,7 @@ const (
 
 var (
 	globalOptions = []string{
-		//		"chroot /var/lib/haproxy",
-		//"daemon",
-		//		"user haproxy",
-		//		"group haproxy",
-		"log /dev/log local0",
+		//"log global",
 		"tune.ssl.default-dh-param 2048",
 		"ssl-default-bind-ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128:AES256:AES:CAMELLIA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA",
 	}
@@ -333,6 +329,7 @@ func (s *Service) createConfig() (string, string, error) {
 	fbbSection.Add(
 		"mode http",
 		"balance roundrobin",
+		"errorfile 503 /app/errors/404.http", // Force not found
 	)
 
 	// Render config
@@ -416,7 +413,7 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, private b
 // validateConfig calls haproxy to validate the given config file.
 func (s *Service) validateConfig(confPath string) error {
 	cmd := exec.Command(s.HaproxyPath, "-c", "-f", confPath)
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		s.Logger.Error("Error in haproxy config: %s", string(output))
 		return maskAny(err)

@@ -25,6 +25,7 @@ ADD ./public_html/ /app/public_html/
 # Create error responses
 RUN cat /app/errors/400.hdr /app/public_html/400.html > /app/errors/400.http
 RUN cat /app/errors/403.hdr /app/public_html/403.html > /app/errors/403.http
+RUN cat /app/errors/404.hdr /app/public_html/404.html > /app/errors/404.http
 RUN cat /app/errors/408.hdr /app/public_html/408.html > /app/errors/408.http
 RUN cat /app/errors/500.hdr /app/public_html/500.html > /app/errors/500.http
 RUN cat /app/errors/502.hdr /app/public_html/50x.html > /app/errors/502.http
