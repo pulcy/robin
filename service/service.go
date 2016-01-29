@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -260,16 +261,11 @@ func (s *Service) createConfig() (string, string, error) {
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
-	useBlocks := []useBlock{}
 	aclNameGen := NewNameGenerator("acl")
-	for _, sr := range services {
-		// Create acls
-		useBlocks = append(useBlocks, createAcl(publicFrontEndSection, sr, false, aclNameGen)...)
-	}
-	for _, useBlock := range useBlocks {
-		// Create link to backend
-		createUseBackend(publicFrontEndSection, useBlock.Service, false, useBlock.AclNames)
-	}
+	// Create acls
+	useBlocks := createAcls(publicFrontEndSection, services, false, aclNameGen)
+	// Create link to backend
+	createUseBackends(publicFrontEndSection, useBlocks, false)
 
 	// Create config for private services
 	privateFrontEndSection := c.Section("frontend http-in-private")
@@ -279,15 +275,10 @@ func (s *Service) createConfig() (string, string, error) {
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
-	useBlocks = []useBlock{}
-	for _, sr := range services {
-		// Create acls
-		useBlocks = append(useBlocks, createAcl(privateFrontEndSection, sr, true, aclNameGen)...)
-	}
-	for _, useBlock := range useBlocks {
-		// Create link to backend
-		createUseBackend(privateFrontEndSection, useBlock.Service, true, useBlock.AclNames)
-	}
+	// Create acls
+	useBlocks = createAcls(privateFrontEndSection, services, true, aclNameGen)
+	// Create link to backend
+	createUseBackends(privateFrontEndSection, useBlocks, true)
 
 	// Create backends
 	for _, sr := range services {
@@ -373,15 +364,25 @@ func createAclRules(sel ServiceSelector) []string {
 	return result
 }
 
-// creteAcl create `acl` rules for the given selector and adds them
+// creteAcls create `acl` rules for the given services and adds them
 // to the given section
-func createAcl(section *haproxy.Section, sr ServiceRegistration, private bool, ng *nameGenerator) []useBlock {
-	useBlocks := []useBlock{}
-	for _, sel := range sr.Selectors {
-		rules := []string{}
-		if sel.Private == private {
-			rules = append(rules, createAclRules(sel)...)
+func createAcls(section *haproxy.Section, services ServiceRegistrations, private bool, ng *nameGenerator) []useBlock {
+	pairs := selectorServicePairs{}
+	for _, sr := range services {
+		for _, sel := range sr.Selectors {
+			if sel.Private == private {
+				pairs = append(pairs, selectorServicePair{
+					Selector: sel,
+					Service:  sr,
+				})
+			}
 		}
+	}
+	sort.Sort(pairs)
+
+	useBlocks := []useBlock{}
+	for _, pair := range pairs {
+		rules := createAclRules(pair.Selector)
 		if len(rules) == 0 {
 			continue
 		}
@@ -393,17 +394,20 @@ func createAcl(section *haproxy.Section, sr ServiceRegistration, private bool, n
 		}
 		useBlocks = append(useBlocks, useBlock{
 			AclNames: aclNames,
-			Service:  sr,
+			Service:  pair.Service,
 		})
 	}
 	return useBlocks
 }
 
-// createUseBackend creates a `use_backend` rule for the given frontend
+// createUseBackends creates a `use_backend` rules for the given input
 // and adds it to the given section
-func createUseBackend(section *haproxy.Section, sr ServiceRegistration, private bool, aclNames []string) {
-	if len(aclNames) > 0 {
-		section.Add(fmt.Sprintf("use_backend %s if %s", sr.backendName(private), strings.Join(aclNames, " ")))
+func createUseBackends(section *haproxy.Section, useBlocks []useBlock, private bool) {
+	for _, useBlock := range useBlocks {
+		if len(useBlock.AclNames) == 0 {
+			continue
+		}
+		section.Add(fmt.Sprintf("use_backend %s if %s", useBlock.Service.backendName(private), strings.Join(useBlock.AclNames, " ")))
 	}
 }
 

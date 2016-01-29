@@ -66,6 +66,7 @@ func (list ServiceInstances) Sort() {
 }
 
 type ServiceSelector struct {
+	Weight     int    // How important is this selector. (0-100), 100 being most important
 	Domain     string // Domain to match on
 	SslCert    string // SSL certificate filename
 	PathPrefix string // Prefix of HTTP path to match on
@@ -79,7 +80,7 @@ func (fs ServiceSelector) FullString() string {
 		users = append(users, user.FullString())
 	}
 	sort.Strings(users)
-	return fmt.Sprintf("%s-%s-%s-%v-%#v", fs.Domain, fs.SslCert, fs.PathPrefix, fs.Private, users)
+	return fmt.Sprintf("%03d-%s-%s-%s-%v-%#v", (100 - fs.Weight), fs.Domain, fs.SslCert, fs.PathPrefix, fs.Private, users)
 }
 
 type ServiceSelectors []ServiceSelector
@@ -222,5 +223,30 @@ func (list Users) Less(i, j int) bool {
 
 // Swap swaps the elements with indexes i and j.
 func (list Users) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+
+type selectorServicePair struct {
+	Selector ServiceSelector
+	Service  ServiceRegistration
+}
+
+type selectorServicePairs []selectorServicePair
+
+// Len is the number of elements in the collection.
+func (list selectorServicePairs) Len() int {
+	return len(list)
+}
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (list selectorServicePairs) Less(i, j int) bool {
+	a := list[i].Selector.FullString() + list[i].Service.FullString()
+	b := list[j].Selector.FullString() + list[j].Service.FullString()
+	return strings.Compare(a, b) < 0
+}
+
+// Swap swaps the elements with indexes i and j.
+func (list selectorServicePairs) Swap(i, j int) {
 	list[i], list[j] = list[j], list[i]
 }

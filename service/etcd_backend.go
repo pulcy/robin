@@ -135,6 +135,7 @@ type frontendRecord struct {
 }
 
 type frontendSelectorRecord struct {
+	Weight     int          `json:"weight,omitempty"`
 	Domain     string       `json:"domain,omitempty"`
 	SslCert    string       `json:"ssl-cert,omitempty"`
 	PathPrefix string       `json:"path-prefix,omitempty"`
@@ -190,6 +191,7 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 					continue
 				}
 				frSel := ServiceSelector{
+					Weight:     sel.Weight,
 					Domain:     sel.Domain,
 					SslCert:    sel.SslCert,
 					PathPrefix: sel.PathPrefix,
