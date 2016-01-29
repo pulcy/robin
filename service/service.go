@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -27,7 +29,7 @@ const (
 var (
 	globalOptions = []string{
 		//		"chroot /var/lib/haproxy",
-		"daemon",
+		//"daemon",
 		//		"user haproxy",
 		//		"group haproxy",
 		"log /dev/log local0",
@@ -78,6 +80,7 @@ type Service struct {
 
 	signalCounter uint32
 	lastConfig    string
+	lastPid       int
 	dirty         bool
 }
 
@@ -334,7 +337,6 @@ func (s *Service) createConfig() (string, string, error) {
 
 	// Render config
 	config := c.Render()
-	s.Logger.Debug("Config:\n%s", config)
 
 	// Create temp file first
 	tempFile, err := ioutil.TempFile("", "haproxy")
@@ -427,25 +429,37 @@ func (s *Service) restartHaproxy() error {
 	args := []string{
 		"-f",
 		s.HaproxyConfPath,
-		"-p",
-		s.HaproxyPidPath,
 	}
-	if pid, err := ioutil.ReadFile(s.HaproxyPidPath); err == nil {
-		args = append(args, "-sf", string(pid))
+	if s.lastPid > 0 {
+		args = append(args, "-sf", strconv.Itoa(s.lastPid))
 	}
 
 	s.Logger.Debug("Starting haproxy with %#v", args)
 	cmd := exec.Command(s.HaproxyPath, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGUSR1}
+	cmd.Stdin = bytes.NewReader([]byte{})
 	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		s.Logger.Error("Failed to start haproxy: %#v", err)
 		return maskAny(err)
 	}
 
+	pid := -1
+	proc := cmd.Process
+	if proc != nil {
+		pid = proc.Pid
+	}
+	s.lastPid = pid
+	s.Logger.Debug("haxproxy pid %d started", pid)
+
 	go func() {
 		// Wait for haproxy to terminate so we avoid defunct processes
-		cmd.Wait()
+		if err := cmd.Wait(); err != nil {
+			s.Logger.Error("haproxy pid %d wait returned an error: %#v", pid, err)
+		} else {
+			s.Logger.Debug("haproxy pid %d terminated", pid)
+		}
 	}()
 
 	return nil
