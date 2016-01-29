@@ -425,6 +425,12 @@ func (s *Service) restartHaproxy() error {
 		s.Logger.Error("Failed to start haproxy: %#v", err)
 		return maskAny(err)
 	}
+
+	go func() {
+		// Wait for haproxy to terminate so we avoid defunct processes
+		cmd.Wait()
+	}()
+
 	return nil
 }
 
