@@ -16,6 +16,7 @@ REPOPATH := $(ORGPATH)/$(REPONAME)
 BIN := $(BINDIR)/$(PROJECT)
 
 GOPATH := $(GOBUILDDIR)
+GOVERSION := 1.5.3
 
 ifndef GOOS
 	GOOS := linux
@@ -28,7 +29,7 @@ SOURCES := $(shell find $(SRCDIR) -name '*.go')
 
 .PHONY: all clean deps docker
 
-all: $(BIN) docker
+all: $(BIN) 
 
 clean:
 	rm -Rf $(BIN) $(BINGPG) $(GOBUILDDIR)
@@ -42,12 +43,13 @@ $(GOBINDATA):
 $(GOBUILDDIR):
 	@mkdir -p $(ORGDIR)
 	@rm -f $(REPODIR) && ln -s ../../../.. $(REPODIR)
-	@cd $(GOPATH) && pulcy go get github.com/dchest/uniuri
-	@cd $(GOPATH) && pulcy go get github.com/juju/errgo
-	@cd $(GOPATH) && pulcy go get github.com/op/go-logging
-	@cd $(GOPATH) && pulcy go get github.com/spf13/cobra
-	@cd $(GOPATH) && pulcy go get github.com/spf13/pflag
-	@cd $(GOPATH) && pulcy go get github.com/coreos/go-etcd/etcd
+	@cd $(GOPATH) && pulcy go get \
+		github.com/dchest/uniuri \
+		github.com/juju/errgo \
+		github.com/op/go-logging \
+		github.com/spf13/cobra \
+		github.com/spf13/pflag \
+		github.com/coreos/go-etcd/etcd
 
 $(BIN): $(GOBUILDDIR) $(SOURCES)
 	docker run \
@@ -58,7 +60,7 @@ $(BIN): $(GOBUILDDIR) $(SOURCES)
 	    -e GOARCH=$(GOARCH) \
 	    -e CGO_ENABLED=0 \
 	    -w /usr/code/ \
-	    golang:1.5.1 \
+	    golang:$(GOVERSION) \
 	    go build -a -installsuffix netgo -tags netgo -ldflags "-X main.projectVersion=$(VERSION) -X main.projectBuild=$(COMMIT)" -o /usr/code/$(PROJECT)
 
 docker: $(BIN)

@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"path"
 	"strconv"
@@ -48,6 +49,23 @@ func (eb *etcdBackend) Watch() error {
 
 // Load all registered services
 func (eb *etcdBackend) Services() (ServiceRegistrations, error) {
+	servicesTree, err := eb.readServicesTree()
+	if err != nil {
+		return nil, maskAny(err)
+	}
+	frontEndTree, err := eb.readFrontEndsTree()
+	if err != nil {
+		return nil, maskAny(err)
+	}
+	result, err := eb.mergeTrees(servicesTree, frontEndTree)
+	if err != nil {
+		return nil, maskAny(err)
+	}
+	return result, nil
+}
+
+// Load all registered services
+func (eb *etcdBackend) readServicesTree() (ServiceRegistrations, error) {
 	etcdPath := path.Join(eb.prefix, servicePrefix)
 	sort := false
 	recursive := true
@@ -62,8 +80,8 @@ func (eb *etcdBackend) Services() (ServiceRegistrations, error) {
 	for _, serviceNode := range resp.Node.Nodes {
 		name := path.Base(serviceNode.Key)
 		registrations := make(map[int]*ServiceRegistration)
-		for _, backendNode := range serviceNode.Nodes {
-			uniqueID := path.Base(backendNode.Key)
+		for _, instanceNode := range serviceNode.Nodes {
+			uniqueID := path.Base(instanceNode.Key)
 			parts := strings.Split(uniqueID, ":")
 			if len(parts) < 3 {
 				eb.Logger.Warning("UniqueID malformed: '%s'", uniqueID)
@@ -74,12 +92,17 @@ func (eb *etcdBackend) Services() (ServiceRegistrations, error) {
 				eb.Logger.Warning("Failed to parse port: '%s'", parts[2])
 				continue
 			}
+			instance, err := eb.parseServiceInstance(instanceNode.Value)
+			if err != nil {
+				eb.Logger.Warning("Failed to parse instance '%s': %#v", instanceNode.Value, err)
+				continue
+			}
 			sr, ok := registrations[port]
 			if !ok {
-				sr = &ServiceRegistration{ServiceName: name, Port: port}
+				sr = &ServiceRegistration{ServiceName: name, ServicePort: port}
 				registrations[port] = sr
 			}
-			sr.Backends = append(sr.Backends, backendNode.Value)
+			sr.Instances = append(sr.Instances, instance)
 		}
 		for _, v := range registrations {
 			list = append(list, *v)
@@ -87,6 +110,22 @@ func (eb *etcdBackend) Services() (ServiceRegistrations, error) {
 	}
 
 	return list, nil
+}
+
+// parseServiceInstance parses a string in the format of "<ip>':'<port>" into a ServiceInstance.
+func (eb *etcdBackend) parseServiceInstance(s string) (ServiceInstance, error) {
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		return ServiceInstance{}, maskAny(fmt.Errorf("Invalid service instance '%s'", s))
+	}
+	port, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return ServiceInstance{}, maskAny(fmt.Errorf("Invalid service instance port '%s' in '%s'", parts[1], s))
+	}
+	return ServiceInstance{
+		IP:   parts[0],
+		Port: port,
+	}, nil
 }
 
 type frontendRecord struct {
@@ -110,7 +149,7 @@ type userRecord struct {
 }
 
 // Load all registered front-ends
-func (eb *etcdBackend) FrontEnds() (FrontEndRegistrations, error) {
+func (eb *etcdBackend) readFrontEndsTree() ([]frontendRecord, error) {
 	etcdPath := path.Join(eb.prefix, frontEndPrefix)
 	sort := false
 	recursive := false
@@ -118,51 +157,58 @@ func (eb *etcdBackend) FrontEnds() (FrontEndRegistrations, error) {
 	if err != nil {
 		return nil, maskAny(err)
 	}
-	list := FrontEndRegistrations{}
+	list := []frontendRecord{}
 	if resp.Node == nil {
 		return list, nil
 	}
 	for _, frontEndNode := range resp.Node.Nodes {
 		rawJson := frontEndNode.Value
-		record := &frontendRecord{}
-		if err := json.Unmarshal([]byte(rawJson), record); err != nil {
+		record := frontendRecord{}
+		if err := json.Unmarshal([]byte(rawJson), &record); err != nil {
 			eb.Logger.Error("Cannot unmarshal registration of %s", frontEndNode.Key)
 			continue
 		}
-
-		name := path.Base(frontEndNode.Key)
-		registrations := make(map[int]*FrontEndRegistration)
-		for _, sel := range record.Selectors {
-			port := sel.Port
-			reg, ok := registrations[port]
-			if !ok {
-				reg = &FrontEndRegistration{
-					Name:          name,
-					Service:       record.Service,
-					Port:          port,
-					HttpCheckPath: record.HttpCheckPath,
-				}
-				registrations[port] = reg
-			}
-			frSel := FrontEndSelector{
-				Domain:     sel.Domain,
-				SslCert:    sel.SslCert,
-				PathPrefix: sel.PathPrefix,
-				Port:       sel.Port,
-				Private:    sel.Private,
-			}
-			for _, user := range sel.Users {
-				frSel.Users = append(frSel.Users, User{
-					Name:         user.Name,
-					PasswordHash: user.PasswordHash,
-				})
-			}
-			reg.Selectors = append(reg.Selectors, frSel)
-		}
-		for _, reg := range registrations {
-			list = append(list, *reg)
-		}
+		list = append(list, record)
 	}
 
 	return list, nil
+}
+
+// mergeTrees merges the 2 trees into a single list of registrations.
+func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []frontendRecord) (ServiceRegistrations, error) {
+	result := ServiceRegistrations{}
+	for _, service := range services {
+		for _, fr := range frontends {
+			if service.ServiceName != fr.Service {
+				continue
+			}
+			if fr.HttpCheckPath != "" && service.HttpCheckPath == "" {
+				service.HttpCheckPath = fr.HttpCheckPath
+			}
+			for _, sel := range fr.Selectors {
+				if sel.Port != 0 && sel.Port != service.ServicePort {
+					continue
+				}
+				frSel := ServiceSelector{
+					Domain:     sel.Domain,
+					SslCert:    sel.SslCert,
+					PathPrefix: sel.PathPrefix,
+					Port:       sel.Port,
+					Private:    sel.Private,
+				}
+				for _, user := range sel.Users {
+					frSel.Users = append(frSel.Users, User{
+						Name:         user.Name,
+						PasswordHash: user.PasswordHash,
+					})
+				}
+				service.Selectors = append(service.Selectors, frSel)
+
+			}
+		}
+		if len(service.Selectors) > 0 {
+			result = append(result, service)
+		}
+	}
+	return result, nil
 }

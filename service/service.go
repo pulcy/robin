@@ -184,11 +184,6 @@ func (s *Service) createConfig() (string, string, error) {
 	c.Section("defaults").Add(defaultsOptions...)
 
 	// Fetch data from backend
-	frontends, err := s.Backend.FrontEnds()
-	if err != nil {
-		return "", "", maskAny(err)
-	}
-	frontends.Sort()
 	services, err := s.Backend.Services()
 	if err != nil {
 		return "", "", maskAny(err)
@@ -196,10 +191,6 @@ func (s *Service) createConfig() (string, string, error) {
 	services.Sort()
 
 	// Log services
-	s.Logger.Info("Found %d frontends", len(frontends))
-	for _, fr := range frontends {
-		s.Logger.Info("Frontend: %#v", fr)
-	}
 	s.Logger.Info("Found %d services", len(services))
 	for _, srv := range services {
 		s.Logger.Info("Service: %#v", srv)
@@ -222,12 +213,12 @@ func (s *Service) createConfig() (string, string, error) {
 	}
 
 	// Create user lists for each frontend (that needs it)
-	for _, fr := range frontends {
-		for selIndex, sel := range fr.Selectors {
+	for _, sr := range services {
+		for selIndex, sel := range sr.Selectors {
 			if len(sel.Users) == 0 {
 				continue
 			}
-			userListSection := c.Section("userlist " + fr.userListName(selIndex))
+			userListSection := c.Section("userlist " + sr.userListName(selIndex))
 			for _, user := range sel.Users {
 				userListSection.Add(fmt.Sprintf("user %s password %s", user.Name, user.PasswordHash))
 			}
@@ -239,8 +230,8 @@ func (s *Service) createConfig() (string, string, error) {
 	publicFrontEndSection.Add("bind *:80")
 	// Collect certificates
 	certs := []string{}
-	for _, fr := range frontends {
-		for _, sel := range fr.Selectors {
+	for _, sr := range services {
+		for _, sel := range sr.Selectors {
 			if !sel.Private && sel.SslCert != "" {
 				crt := fmt.Sprintf("crt %s", filepath.Join(s.SslCertsFolder, sel.SslCert))
 				certs = append(certs, crt)
@@ -260,13 +251,13 @@ func (s *Service) createConfig() (string, string, error) {
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
-	for _, fr := range frontends {
+	for _, sr := range services {
 		// Create acls
-		hasAcl := createAcl(publicFrontEndSection, fr, false)
+		hasAcl := createAcl(publicFrontEndSection, sr, false)
 
 		// Create link to backend
 		if hasAcl {
-			createUseBackend(publicFrontEndSection, fr, false)
+			createUseBackend(publicFrontEndSection, sr, false)
 		}
 	}
 
@@ -278,43 +269,43 @@ func (s *Service) createConfig() (string, string, error) {
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
-	for _, fr := range frontends {
+	for _, sr := range services {
 		// Create acls
-		hasAcl := createAcl(privateFrontEndSection, fr, true)
+		hasAcl := createAcl(privateFrontEndSection, sr, true)
 
 		// Create link to backend
 		if hasAcl {
-			createUseBackend(privateFrontEndSection, fr, true)
+			createUseBackend(privateFrontEndSection, sr, true)
 		}
 	}
 
 	// Create backends
-	for _, fr := range frontends {
+	for _, sr := range services {
 		for _, private := range []bool{false, true} {
 			if private {
-				if !fr.HasPrivateSelectors() {
+				if !sr.HasPrivateSelectors() {
 					continue
 				}
 			} else {
-				if !fr.HasPublicSelectors() {
+				if !sr.HasPublicSelectors() {
 					continue
 				}
 			}
 			// Create backend
-			backendSection := c.Section(fmt.Sprintf("backend %s", fr.backendName(private)))
+			backendSection := c.Section(fmt.Sprintf("backend %s", sr.backendName(private)))
 			backendSection.Add(
 				"mode http",
 				"balance roundrobin",
 			)
-			if fr.HttpCheckPath != "" {
-				backendSection.Add(fmt.Sprintf("option httpchk GET %s", fr.HttpCheckPath))
+			if sr.HttpCheckPath != "" {
+				backendSection.Add(fmt.Sprintf("option httpchk GET %s", sr.HttpCheckPath))
 			}
 
 			authentication := false
-			for selIndex, sel := range fr.Selectors {
+			for selIndex, sel := range sr.Selectors {
 				if len(sel.Users) > 0 {
 					authentication = true
-					backendSection.Add(fmt.Sprintf("acl auth_ok_%d http_auth(%s)", selIndex, fr.userListName(selIndex)))
+					backendSection.Add(fmt.Sprintf("acl auth_ok_%d http_auth(%s)", selIndex, sr.userListName(selIndex)))
 					backendSection.Add(fmt.Sprintf("http-request allow if auth_ok_%d", selIndex))
 				}
 			}
@@ -322,18 +313,13 @@ func (s *Service) createConfig() (string, string, error) {
 				backendSection.Add("http-request auth")
 			}
 
-			for _, service := range services {
-				if !fr.Match(service) {
-					continue
+			for i, instance := range sr.Instances {
+				id := fmt.Sprintf("%s-%d-%d", sr.ServiceName, sr.ServicePort, i)
+				check := ""
+				if sr.HttpCheckPath != "" {
+					check = "check"
 				}
-				for i, b := range service.Backends {
-					id := fmt.Sprintf("%s-%d-%d", service.ServiceName, service.Port, i)
-					check := ""
-					if fr.HttpCheckPath != "" {
-						check = "check"
-					}
-					backendSection.Add(fmt.Sprintf("server %s %s %s", id, b, check))
-				}
+				backendSection.Add(fmt.Sprintf("server %s %s:%d %s", id, instance.IP, instance.Port, check))
 			}
 		}
 	}
@@ -362,7 +348,7 @@ func (s *Service) createConfig() (string, string, error) {
 }
 
 // creteAclElement create `acl` rules for the given selector
-func createAclElement(fr FrontEndRegistration, sel FrontEndSelector, selIndex int) string {
+func createAclElement(sr ServiceRegistration, sel ServiceSelector, selIndex int) string {
 	result := []string{}
 	if sel.Domain != "" {
 		if sel.SslCert != "" {
@@ -379,25 +365,25 @@ func createAclElement(fr FrontEndRegistration, sel FrontEndSelector, selIndex in
 
 // creteAcl create `acl` rules for the given selector and adds them
 // to the given section
-func createAcl(section *haproxy.Section, fr FrontEndRegistration, private bool) bool {
+func createAcl(section *haproxy.Section, sr ServiceRegistration, private bool) bool {
 	rules := []string{}
-	for selIndex, sel := range fr.Selectors {
+	for selIndex, sel := range sr.Selectors {
 		if sel.Private == private {
-			rules = append(rules, createAclElement(fr, sel, selIndex))
+			rules = append(rules, createAclElement(sr, sel, selIndex))
 		}
 	}
 	if len(rules) == 0 {
 		return false
 	}
 
-	section.Add(fmt.Sprintf("acl %s %s", fr.aclName(private), strings.Join(rules, " ")))
+	section.Add(fmt.Sprintf("acl %s %s", sr.aclName(private), strings.Join(rules, " ")))
 	return true
 }
 
 // createUseBackend creates a `use_backend` rule for the given frontend
 // and adds it to the given section
-func createUseBackend(section *haproxy.Section, fr FrontEndRegistration, private bool) {
-	section.Add(fmt.Sprintf("use_backend %s if %s", fr.backendName(private), fr.aclName(private)))
+func createUseBackend(section *haproxy.Section, sr ServiceRegistration, private bool) {
+	section.Add(fmt.Sprintf("use_backend %s if %s", sr.backendName(private), sr.aclName(private)))
 }
 
 // validateConfig calls haproxy to validate the given config file.
@@ -424,7 +410,7 @@ func (s *Service) restartHaproxy() error {
 	}
 
 	s.Logger.Debug("Starting haproxy with %#v", args)
-	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("%s %s", s.HaproxyPath, strings.Join(args, " ")))
+	cmd := exec.Command(s.HaproxyPath, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGUSR1}
 	cmd.Stdout = os.Stdout
 	if err := cmd.Start(); err != nil {

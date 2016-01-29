@@ -12,19 +12,23 @@ type Backend interface {
 
 	// Load all registered services
 	Services() (ServiceRegistrations, error)
-
-	// Load all registered front-ends
-	FrontEnds() (FrontEndRegistrations, error)
 }
 
 type ServiceRegistration struct {
-	ServiceName string   // Name of the service
-	Port        int      // Port the service is listening on (host port)
-	Backends    []string // List of ip:port for the backend of this service
+	ServiceName   string           // Name of the service
+	ServicePort   int              // Port the service is listening on (inside its container)
+	Instances     ServiceInstances // List instances of the service (can not be empty)
+	Selectors     ServiceSelectors // List of selectors to match traffic to this service
+	HttpCheckPath string           // Path (on the service) used for health checks (can be empty)
 }
 
 func (sr ServiceRegistration) FullString() string {
-	return fmt.Sprintf("%s-%d-%#v", sr.ServiceName, sr.Port, sr.Backends)
+	return fmt.Sprintf("%s-%d-%s-%s-%s",
+		sr.ServiceName,
+		sr.ServicePort,
+		sr.Instances.FullString(),
+		sr.Selectors.FullString(),
+		sr.HttpCheckPath)
 }
 
 type ServiceRegistrations []ServiceRegistration
@@ -32,32 +36,36 @@ type ServiceRegistrations []ServiceRegistration
 func (list ServiceRegistrations) Sort() {
 	sort.Sort(list)
 	for _, sr := range list {
-		sort.Strings(sr.Backends)
+		sr.Instances.Sort()
+		sr.Selectors.Sort()
 	}
 }
 
-type FrontEndRegistration struct {
-	Name          string
-	Selectors     FrontEndSelectors
-	Service       string
-	Port          int
-	HttpCheckPath string
+type ServiceInstance struct {
+	IP   string // IP address to connect to to reach the service instance
+	Port int    // Port to connect to to reach the service instance
 }
 
-func (fr FrontEndRegistration) FullString() string {
-	return fmt.Sprintf("%s-%s-%d-%s-%#v", fr.Name, fr.Service, fr.Port, fr.HttpCheckPath, fr.Selectors)
+func (si ServiceInstance) FullString() string {
+	return fmt.Sprintf("%s-%d", si.IP, si.Port)
 }
 
-type FrontEndRegistrations []FrontEndRegistration
+type ServiceInstances []ServiceInstance
 
-func (list FrontEndRegistrations) Sort() {
+func (list ServiceInstances) FullString() string {
+	slist := []string{}
+	for _, si := range list {
+		slist = append(slist, si.FullString())
+	}
+	sort.Strings(slist)
+	return "[" + strings.Join(slist, ",") + "]"
+}
+
+func (list ServiceInstances) Sort() {
 	sort.Sort(list)
-	for _, fr := range list {
-		fr.Selectors.Sort()
-	}
 }
 
-type FrontEndSelector struct {
+type ServiceSelector struct {
 	Domain     string
 	SslCert    string
 	PathPrefix string
@@ -66,7 +74,7 @@ type FrontEndSelector struct {
 	Users      Users
 }
 
-func (fs FrontEndSelector) FullString() string {
+func (fs ServiceSelector) FullString() string {
 	users := []string{}
 	for _, user := range fs.Users {
 		users = append(users, user.FullString())
@@ -75,9 +83,18 @@ func (fs FrontEndSelector) FullString() string {
 	return fmt.Sprintf("%s-%s-%s-%d-%v-%#v", fs.Domain, fs.SslCert, fs.PathPrefix, fs.Port, fs.Private, users)
 }
 
-type FrontEndSelectors []FrontEndSelector
+type ServiceSelectors []ServiceSelector
 
-func (list FrontEndSelectors) Sort() {
+func (list ServiceSelectors) FullString() string {
+	slist := []string{}
+	for _, ss := range list {
+		slist = append(slist, ss.FullString())
+	}
+	sort.Strings(slist)
+	return "[" + strings.Join(slist, ",") + "]"
+}
+
+func (list ServiceSelectors) Sort() {
 	sort.Sort(list)
 	for _, fs := range list {
 		sort.Sort(fs.Users)
@@ -95,20 +112,8 @@ func (user User) FullString() string {
 
 type Users []User
 
-// Does the given frontend registration match the given service registration?
-func (fr FrontEndRegistration) Match(sr ServiceRegistration) bool {
-	if fr.Service != sr.ServiceName {
-		return false
-	}
-	if fr.Port == 0 {
-		// No port specified, use all ports
-		return true
-	}
-	return fr.Port == sr.Port
-}
-
-func (fr *FrontEndRegistration) HasPublicSelectors() bool {
-	for _, sel := range fr.Selectors {
+func (sr *ServiceRegistration) HasPublicSelectors() bool {
+	for _, sel := range sr.Selectors {
 		if !sel.Private {
 			return true
 		}
@@ -116,8 +121,8 @@ func (fr *FrontEndRegistration) HasPublicSelectors() bool {
 	return false
 }
 
-func (fr *FrontEndRegistration) HasPrivateSelectors() bool {
-	for _, sel := range fr.Selectors {
+func (sr *ServiceRegistration) HasPrivateSelectors() bool {
+	for _, sel := range sr.Selectors {
 		if sel.Private {
 			return true
 		}
@@ -127,20 +132,20 @@ func (fr *FrontEndRegistration) HasPrivateSelectors() bool {
 
 // backendName creates a valid name for the backend of this registration
 // in haproxy.
-func (fr *FrontEndRegistration) backendName(private bool) string {
-	return fmt.Sprintf("backend_%s_%d_%s", cleanName(fr.Name), fr.Port, visibilityPostfix(private))
+func (sr *ServiceRegistration) backendName(private bool) string {
+	return fmt.Sprintf("backend_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, visibilityPostfix(private))
 }
 
 // aclName creates a valid name for the acl of this registration
 // in haproxy.
-func (fr *FrontEndRegistration) aclName(private bool) string {
-	return fmt.Sprintf("acl_%s_%d_%s", cleanName(fr.Name), fr.Port, visibilityPostfix(private))
+func (sr *ServiceRegistration) aclName(private bool) string {
+	return fmt.Sprintf("acl_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, visibilityPostfix(private))
 }
 
 // userListName creates a valid name for the userlist of this registration
 // in haproxy.
-func (fr *FrontEndRegistration) userListName(selectorIndex int) string {
-	return fmt.Sprintf("userlist_%s_%d_%d", cleanName(fr.Name), fr.Port, selectorIndex)
+func (sr *ServiceRegistration) userListName(selectorIndex int) string {
+	return fmt.Sprintf("userlist_%s_%d_%d", cleanName(sr.ServiceName), sr.ServicePort, selectorIndex)
 }
 
 // cleanName removes invalid characters (for haproxy conf) from the given name
@@ -156,38 +161,20 @@ func visibilityPostfix(private bool) string {
 }
 
 // Len is the number of elements in the collection.
-func (list FrontEndRegistrations) Len() int {
+func (list ServiceSelectors) Len() int {
 	return len(list)
 }
 
 // Less reports whether the element with
 // index i should sort before the element with index j.
-func (list FrontEndRegistrations) Less(i, j int) bool {
+func (list ServiceSelectors) Less(i, j int) bool {
 	a := list[i].FullString()
 	b := list[j].FullString()
 	return strings.Compare(a, b) < 0
 }
 
 // Swap swaps the elements with indexes i and j.
-func (list FrontEndRegistrations) Swap(i, j int) {
-	list[i], list[j] = list[j], list[i]
-}
-
-// Len is the number of elements in the collection.
-func (list FrontEndSelectors) Len() int {
-	return len(list)
-}
-
-// Less reports whether the element with
-// index i should sort before the element with index j.
-func (list FrontEndSelectors) Less(i, j int) bool {
-	a := list[i].FullString()
-	b := list[j].FullString()
-	return strings.Compare(a, b) < 0
-}
-
-// Swap swaps the elements with indexes i and j.
-func (list FrontEndSelectors) Swap(i, j int) {
+func (list ServiceSelectors) Swap(i, j int) {
 	list[i], list[j] = list[j], list[i]
 }
 
@@ -206,6 +193,24 @@ func (list ServiceRegistrations) Less(i, j int) bool {
 
 // Swap swaps the elements with indexes i and j.
 func (list ServiceRegistrations) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+
+// Len is the number of elements in the collection.
+func (list ServiceInstances) Len() int {
+	return len(list)
+}
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (list ServiceInstances) Less(i, j int) bool {
+	a := list[i].FullString()
+	b := list[j].FullString()
+	return strings.Compare(a, b) < 0
+}
+
+// Swap swaps the elements with indexes i and j.
+func (list ServiceInstances) Swap(i, j int) {
 	list[i], list[j] = list[j], list[i]
 }
 
