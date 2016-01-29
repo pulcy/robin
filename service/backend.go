@@ -135,12 +135,6 @@ func (sr *ServiceRegistration) backendName(private bool) string {
 	return fmt.Sprintf("backend_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, visibilityPostfix(private))
 }
 
-// aclName creates a valid name for the acl of this registration
-// in haproxy.
-func (sr *ServiceRegistration) aclName(private bool) string {
-	return fmt.Sprintf("acl_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, visibilityPostfix(private))
-}
-
 // userListName creates a valid name for the userlist of this registration
 // in haproxy.
 func (sr *ServiceRegistration) userListName(selectorIndex int) string {

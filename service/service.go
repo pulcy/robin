@@ -176,6 +176,11 @@ func (s *Service) updateHaproxy() error {
 	return nil
 }
 
+type useBlock struct {
+	AclNames []string
+	Service  ServiceRegistration
+}
+
 // createConfig creates a new haproxy configuration file.
 // It returns the path of the new config file.
 func (s *Service) createConfig() (string, string, error) {
@@ -255,16 +260,15 @@ func (s *Service) createConfig() (string, string, error) {
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
-	servicesWithAcl := ServiceRegistrations{}
+	useBlocks := []useBlock{}
+	aclNameGen := NewNameGenerator("acl")
 	for _, sr := range services {
 		// Create acls
-		if hasAcl := createAcl(publicFrontEndSection, sr, false); hasAcl {
-			servicesWithAcl = append(servicesWithAcl, sr)
-		}
+		useBlocks = append(useBlocks, createAcl(publicFrontEndSection, sr, false, aclNameGen)...)
 	}
-	for _, sr := range servicesWithAcl {
+	for _, useBlock := range useBlocks {
 		// Create link to backend
-		createUseBackend(publicFrontEndSection, sr, false)
+		createUseBackend(publicFrontEndSection, useBlock.Service, false, useBlock.AclNames)
 	}
 
 	// Create config for private services
@@ -275,16 +279,14 @@ func (s *Service) createConfig() (string, string, error) {
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
 	)
-	servicesWithAcl = ServiceRegistrations{}
+	useBlocks = []useBlock{}
 	for _, sr := range services {
 		// Create acls
-		if hasAcl := createAcl(privateFrontEndSection, sr, true); hasAcl {
-			servicesWithAcl = append(servicesWithAcl, sr)
-		}
+		useBlocks = append(useBlocks, createAcl(privateFrontEndSection, sr, true, aclNameGen)...)
 	}
-	for _, sr := range servicesWithAcl {
+	for _, useBlock := range useBlocks {
 		// Create link to backend
-		createUseBackend(privateFrontEndSection, sr, true)
+		createUseBackend(privateFrontEndSection, useBlock.Service, true, useBlock.AclNames)
 	}
 
 	// Create backends
@@ -355,8 +357,8 @@ func (s *Service) createConfig() (string, string, error) {
 	return config, tempFile.Name(), nil
 }
 
-// creteAclElement create `acl` rules for the given selector
-func createAclElement(sr ServiceRegistration, sel ServiceSelector, selIndex int) string {
+// createAclRules create `acl` rules for the given selector
+func createAclRules(sel ServiceSelector) []string {
 	result := []string{}
 	if sel.Domain != "" {
 		if sel.SslCert != "" {
@@ -368,30 +370,41 @@ func createAclElement(sr ServiceRegistration, sel ServiceSelector, selIndex int)
 	if sel.PathPrefix != "" {
 		result = append(result, fmt.Sprintf("path_beg %s", sel.PathPrefix))
 	}
-	return strings.Join(result, " ")
+	return result
 }
 
 // creteAcl create `acl` rules for the given selector and adds them
 // to the given section
-func createAcl(section *haproxy.Section, sr ServiceRegistration, private bool) bool {
-	rules := []string{}
-	for selIndex, sel := range sr.Selectors {
+func createAcl(section *haproxy.Section, sr ServiceRegistration, private bool, ng *nameGenerator) []useBlock {
+	useBlocks := []useBlock{}
+	for _, sel := range sr.Selectors {
+		rules := []string{}
 		if sel.Private == private {
-			rules = append(rules, createAclElement(sr, sel, selIndex))
+			rules = append(rules, createAclRules(sel)...)
 		}
+		if len(rules) == 0 {
+			continue
+		}
+		aclNames := []string{}
+		for _, rule := range rules {
+			aclName := ng.Next()
+			section.Add(fmt.Sprintf("acl %s %s", aclName, rule))
+			aclNames = append(aclNames, aclName)
+		}
+		useBlocks = append(useBlocks, useBlock{
+			AclNames: aclNames,
+			Service:  sr,
+		})
 	}
-	if len(rules) == 0 {
-		return false
-	}
-
-	section.Add(fmt.Sprintf("acl %s %s", sr.aclName(private), strings.Join(rules, " ")))
-	return true
+	return useBlocks
 }
 
 // createUseBackend creates a `use_backend` rule for the given frontend
 // and adds it to the given section
-func createUseBackend(section *haproxy.Section, sr ServiceRegistration, private bool) {
-	section.Add(fmt.Sprintf("use_backend %s if %s", sr.backendName(private), sr.aclName(private)))
+func createUseBackend(section *haproxy.Section, sr ServiceRegistration, private bool, aclNames []string) {
+	if len(aclNames) > 0 {
+		section.Add(fmt.Sprintf("use_backend %s if %s", sr.backendName(private), strings.Join(aclNames, " ")))
+	}
 }
 
 // validateConfig calls haproxy to validate the given config file.
