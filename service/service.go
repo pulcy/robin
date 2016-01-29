@@ -177,8 +177,9 @@ func (s *Service) updateHaproxy() error {
 }
 
 type useBlock struct {
-	AclNames []string
-	Service  ServiceRegistration
+	AclNames    []string
+	AuthAclName string
+	Service     ServiceRegistration
 }
 
 // createConfig creates a new haproxy configuration file.
@@ -301,18 +302,6 @@ func (s *Service) createConfig() (string, string, error) {
 				backendSection.Add(fmt.Sprintf("option httpchk GET %s", sr.HttpCheckPath))
 			}
 
-			authentication := false
-			for selIndex, sel := range sr.Selectors {
-				if len(sel.Users) > 0 {
-					authentication = true
-					backendSection.Add(fmt.Sprintf("acl auth_ok_%d http_auth(%s)", selIndex, sr.userListName(selIndex)))
-					backendSection.Add(fmt.Sprintf("http-request allow if auth_ok_%d", selIndex))
-				}
-			}
-			if authentication {
-				backendSection.Add("http-request auth")
-			}
-
 			for i, instance := range sr.Instances {
 				id := fmt.Sprintf("%s-%d-%d", sr.ServiceName, sr.ServicePort, i)
 				check := ""
@@ -368,11 +357,12 @@ func createAclRules(sel ServiceSelector) []string {
 func createAcls(section *haproxy.Section, services ServiceRegistrations, private bool, ng *nameGenerator) []useBlock {
 	pairs := selectorServicePairs{}
 	for _, sr := range services {
-		for _, sel := range sr.Selectors {
+		for selIndex, sel := range sr.Selectors {
 			if sel.Private == private {
 				pairs = append(pairs, selectorServicePair{
-					Selector: sel,
-					Service:  sr,
+					Selector:      sel,
+					SelectorIndex: selIndex,
+					Service:       sr,
 				})
 			}
 		}
@@ -382,7 +372,14 @@ func createAcls(section *haproxy.Section, services ServiceRegistrations, private
 	useBlocks := []useBlock{}
 	for _, pair := range pairs {
 		rules := createAclRules(pair.Selector)
-		if len(rules) == 0 {
+
+		authAclName := ""
+		if len(pair.Selector.Users) > 0 {
+			authAclName = "auth_" + ng.Next()
+			section.Add(fmt.Sprintf("acl %s http_auth(%s)", authAclName, pair.Service.userListName(pair.SelectorIndex)))
+		}
+
+		if len(rules) == 0 && authAclName == "" {
 			continue
 		}
 		aclNames := []string{}
@@ -392,8 +389,9 @@ func createAcls(section *haproxy.Section, services ServiceRegistrations, private
 			aclNames = append(aclNames, aclName)
 		}
 		useBlocks = append(useBlocks, useBlock{
-			AclNames: aclNames,
-			Service:  pair.Service,
+			AclNames:    aclNames,
+			AuthAclName: authAclName,
+			Service:     pair.Service,
 		})
 	}
 	return useBlocks
@@ -406,7 +404,12 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, private b
 		if len(useBlock.AclNames) == 0 {
 			continue
 		}
-		section.Add(fmt.Sprintf("use_backend %s if %s", useBlock.Service.backendName(private), strings.Join(useBlock.AclNames, " ")))
+		acls := strings.Join(useBlock.AclNames, " ")
+		if useBlock.AuthAclName != "" {
+			section.Add(fmt.Sprintf("http-request allow if %s %s", acls, useBlock.AuthAclName))
+			section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
+		}
+		section.Add(fmt.Sprintf("use_backend %s if %s", useBlock.Service.backendName(private), acls))
 	}
 }
 

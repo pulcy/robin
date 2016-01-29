@@ -237,8 +237,9 @@ func (list Users) Swap(i, j int) {
 }
 
 type selectorServicePair struct {
-	Selector ServiceSelector
-	Service  ServiceRegistration
+	Selector      ServiceSelector
+	SelectorIndex int
+	Service       ServiceRegistration
 }
 
 type selectorServicePairs []selectorServicePair
