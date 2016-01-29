@@ -193,7 +193,6 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 					Domain:     sel.Domain,
 					SslCert:    sel.SslCert,
 					PathPrefix: sel.PathPrefix,
-					Port:       sel.Port,
 					Private:    sel.Private,
 				}
 				for _, user := range sel.Users {

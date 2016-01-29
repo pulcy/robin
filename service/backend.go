@@ -66,12 +66,11 @@ func (list ServiceInstances) Sort() {
 }
 
 type ServiceSelector struct {
-	Domain     string
-	SslCert    string
-	PathPrefix string
-	Port       int
-	Private    bool
-	Users      Users
+	Domain     string // Domain to match on
+	SslCert    string // SSL certificate filename
+	PathPrefix string // Prefix of HTTP path to match on
+	Private    bool   // If set, match on private port (81), otherwise match of public port (80,443)
+	Users      Users  // If set, require authentication for one of these users
 }
 
 func (fs ServiceSelector) FullString() string {
@@ -80,7 +79,7 @@ func (fs ServiceSelector) FullString() string {
 		users = append(users, user.FullString())
 	}
 	sort.Strings(users)
-	return fmt.Sprintf("%s-%s-%s-%d-%v-%#v", fs.Domain, fs.SslCert, fs.PathPrefix, fs.Port, fs.Private, users)
+	return fmt.Sprintf("%s-%s-%s-%v-%#v", fs.Domain, fs.SslCert, fs.PathPrefix, fs.Private, users)
 }
 
 type ServiceSelectors []ServiceSelector
