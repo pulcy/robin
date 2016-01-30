@@ -1,4 +1,4 @@
-package service
+package backend
 
 import (
 	"fmt"
@@ -140,30 +140,6 @@ func (sr *ServiceRegistration) HasPrivateSelectors() bool {
 	return false
 }
 
-// backendName creates a valid name for the backend of this registration
-// in haproxy.
-func (sr *ServiceRegistration) backendName(private bool) string {
-	return fmt.Sprintf("backend_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, visibilityPostfix(private))
-}
-
-// userListName creates a valid name for the userlist of this registration
-// in haproxy.
-func (sr *ServiceRegistration) userListName(selectorIndex int) string {
-	return fmt.Sprintf("userlist_%s_%d_%d", cleanName(sr.ServiceName), sr.ServicePort, selectorIndex)
-}
-
-// cleanName removes invalid characters (for haproxy conf) from the given name
-func cleanName(s string) string {
-	return s // TODO
-}
-
-func visibilityPostfix(private bool) string {
-	if private {
-		return "private"
-	}
-	return "public"
-}
-
 // Len is the number of elements in the collection.
 func (list ServiceSelectors) Len() int {
 	return len(list)
@@ -233,31 +209,5 @@ func (list Users) Less(i, j int) bool {
 
 // Swap swaps the elements with indexes i and j.
 func (list Users) Swap(i, j int) {
-	list[i], list[j] = list[j], list[i]
-}
-
-type selectorServicePair struct {
-	Selector      ServiceSelector
-	SelectorIndex int
-	Service       ServiceRegistration
-}
-
-type selectorServicePairs []selectorServicePair
-
-// Len is the number of elements in the collection.
-func (list selectorServicePairs) Len() int {
-	return len(list)
-}
-
-// Less reports whether the element with
-// index i should sort before the element with index j.
-func (list selectorServicePairs) Less(i, j int) bool {
-	a := list[i].Selector.FullString() + list[i].Service.FullString()
-	b := list[j].Selector.FullString() + list[j].Service.FullString()
-	return strings.Compare(a, b) < 0
-}
-
-// Swap swaps the elements with indexes i and j.
-func (list selectorServicePairs) Swap(i, j int) {
 	list[i], list[j] = list[j], list[i]
 }

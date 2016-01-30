@@ -8,7 +8,7 @@ GOBUILDDIR := $(SCRIPTDIR)/.gobuild
 SRCDIR := $(SCRIPTDIR)
 BINDIR := $(ROOTDIR)
 
-ORGPATH := arvika.pulcy.com/pulcy
+ORGPATH := git.pulcy.com/pulcy
 ORGDIR := $(GOBUILDDIR)/src/$(ORGPATH)
 REPONAME := $(PROJECT)
 REPODIR := $(ORGDIR)/$(REPONAME)
@@ -29,7 +29,7 @@ SOURCES := $(shell find $(SRCDIR) -name '*.go')
 
 .PHONY: all clean deps docker
 
-all: $(BIN) 
+all: $(BIN)
 
 clean:
 	rm -Rf $(BIN) $(BINGPG) $(GOBUILDDIR)
@@ -44,12 +44,13 @@ $(GOBUILDDIR):
 	@mkdir -p $(ORGDIR)
 	@rm -f $(REPODIR) && ln -s ../../../.. $(REPODIR)
 	@cd $(GOPATH) && pulcy go get \
+		github.com/coreos/go-etcd/etcd \
 		github.com/dchest/uniuri \
 		github.com/juju/errgo \
 		github.com/op/go-logging \
 		github.com/spf13/cobra \
 		github.com/spf13/pflag \
-		github.com/coreos/go-etcd/etcd
+		github.com/xenolf/lego
 
 $(BIN): $(GOBUILDDIR) $(SOURCES)
 	docker run \

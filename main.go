@@ -6,10 +6,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/coreos/go-etcd/etcd"
 	"github.com/op/go-logging"
 	"github.com/spf13/cobra"
 
-	"arvika.pulcy.com/pulcy/load-balancer/service"
+	"git.pulcy.com/pulcy/load-balancer/service"
+	"git.pulcy.com/pulcy/load-balancer/service/acme"
+	"git.pulcy.com/pulcy/load-balancer/service/backend"
 )
 
 const (
@@ -20,6 +23,7 @@ const (
 	defaultSslCertsFolder = "/certs/"
 	defaultForceSsl       = false
 	defaultPrivateHost    = ""
+	defaultAcmeHttpPort   = 8011
 )
 
 var (
@@ -35,7 +39,9 @@ var (
 	}
 	log = logging.MustGetLogger(cmdMain.Use)
 
-	etcdAddr        string
+	backendEtcdAddr string
+	acmeEtcdAddr    string
+	acmeHttpPort    int
 	haproxyConfPath string
 	statsPort       int
 	statsUser       string
@@ -48,7 +54,8 @@ var (
 
 func init() {
 	logging.SetFormatter(logging.MustStringFormatter("[%{level:-5s}] %{message}"))
-	cmdMain.Flags().StringVar(&etcdAddr, "etcd-addr", "", "Address of etcd backend")
+	cmdMain.Flags().StringVar(&backendEtcdAddr, "etcd-addr", "", "Address of etcd backend")
+	cmdMain.Flags().StringVar(&acmeEtcdAddr, "acme-etcd-addr", "", "Address of etcd acme")
 	cmdMain.Flags().StringVar(&haproxyConfPath, "haproxy-conf", "/data/config/haproxy.cfg", "Path of haproxy config file")
 	cmdMain.Flags().IntVar(&statsPort, "stats-port", defaultStatsPort, "Port for stats page")
 	cmdMain.Flags().StringVar(&statsUser, "stats-user", defaultStatsUser, "User for stats page")
@@ -57,6 +64,7 @@ func init() {
 	cmdMain.Flags().StringVar(&sslCertsFolder, "ssl-certs", defaultSslCertsFolder, "Folder containing SSL certificate")
 	cmdMain.Flags().BoolVar(&forceSsl, "force-ssl", defaultForceSsl, "Redirect HTTP to HTTPS")
 	cmdMain.Flags().StringVar(&privateHost, "private-host", defaultPrivateHost, "IP address of private network")
+	cmdMain.Flags().IntVar(&acmeHttpPort, "acme-http-port", defaultAcmeHttpPort, "Port to listen for ACME HTTP challenges on (internally)")
 	cmdMain.Run = cmdMainRun
 }
 
@@ -66,14 +74,35 @@ func main() {
 
 func cmdMainRun(cmd *cobra.Command, args []string) {
 	// Prepare backend
-	if etcdAddr == "" {
+	if backendEtcdAddr == "" {
 		Exitf("Please specify --etcd-addr")
 	}
-	etcdUrl, err := url.Parse(etcdAddr)
+	backendEtcdUrl, err := url.Parse(backendEtcdAddr)
 	if err != nil {
-		Exitf("--etcd-addr '%s' is not valid: %#v", etcdAddr, err)
+		Exitf("--etcd-addr '%s' is not valid: %#v", backendEtcdAddr, err)
 	}
-	backend := service.NewEtcdBackend(log, etcdUrl)
+	backend := backend.NewEtcdBackend(log, backendEtcdUrl)
+
+	// Prepare acme service
+	if acmeEtcdAddr == "" {
+		Exitf("Please specify --acme-etcd-addr")
+	}
+	acmeEtcdUrl, err := url.Parse(acmeEtcdAddr)
+	if err != nil {
+		Exitf("--acme-etcd-addr '%s' is not valid: %#v", acmeEtcdAddr, err)
+	}
+	acmeEtcdClient := etcd.NewClient([]string{"http://" + acmeEtcdUrl.Host})
+	acmeService := acme.NewAcmeService(acme.AcmeServiceConfig{
+		HttpProviderConfig: acme.HttpProviderConfig{
+			EtcdPrefix: acmeEtcdUrl.Path,
+			Port:       acmeHttpPort,
+		},
+	}, acme.AcmeServiceDependencies{
+		HttpProviderDependencies: acme.HttpProviderDependencies{
+			Logger:     log,
+			EtcdClient: acmeEtcdClient,
+		},
+	})
 
 	// Prepare service
 	if haproxyConfPath == "" {
@@ -82,7 +111,7 @@ func cmdMainRun(cmd *cobra.Command, args []string) {
 	if privateHost == "" {
 		Exitf("Please specify --private-host")
 	}
-	config := service.ServiceConfig{
+	service := service.NewService(service.ServiceConfig{
 		HaproxyConfPath: haproxyConfPath,
 		StatsPort:       statsPort,
 		StatsUser:       statsUser,
@@ -91,12 +120,16 @@ func cmdMainRun(cmd *cobra.Command, args []string) {
 		SslCertsFolder:  sslCertsFolder,
 		ForceSsl:        forceSsl,
 		PrivateHost:     privateHost,
+	}, service.ServiceDependencies{
+		Logger:      log,
+		Backend:     backend,
+		AcmeService: acmeService,
+	})
+
+	// Start all services
+	if err := acmeService.Start(); err != nil {
+		Exitf("Failed to start ACME service: %#v", err)
 	}
-	deps := service.ServiceDependencies{
-		Logger:  log,
-		Backend: backend,
-	}
-	service := service.NewService(config, deps)
 	service.Run()
 }
 
