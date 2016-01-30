@@ -10,8 +10,8 @@ import (
 const (
 	defaultKeyBits              = 2048
 	defaultCADirectoryURL       = "https://acme-v01.api.letsencrypt.org/directory"
-	defaultPrivateKeyPathTmpl   = "~/.pulcy/acme/private-key"
-	defaultRegistrationPathTmpl = "~/.pulcy/acme/registration"
+	defaultPrivateKeyPathTmpl   = "~/.pulcy/acme/private-key.pem"
+	defaultRegistrationPathTmpl = "~/.pulcy/acme/registration.json"
 )
 
 var (

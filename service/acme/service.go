@@ -3,8 +3,6 @@ package acme
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 
 	"github.com/xenolf/lego/acme"
@@ -86,18 +84,15 @@ func (s *acmeService) Register() error {
 		if err := s.saveRegistration(registration); err != nil {
 			return maskAny(err)
 		}
+
+		user.Registration = registration
+		client, err = acme.NewClient(s.CADirectoryURL, user, s.KeyBits)
+		if err != nil {
+			return maskAny(err)
+		}
 	}
 
-	resp, err := http.Get(registration.TosURL)
-	if err != nil {
-		return maskAny(err)
-	}
-	defer resp.Body.Close()
-	tos, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return maskAny(err)
-	}
-	fmt.Println(string(tos))
+	fmt.Printf("Find the terms here:%s\n", registration.TosURL)
 	if err := confirm("Do you agree with these terms?"); err != nil {
 		return maskAny(err)
 	}
@@ -105,6 +100,16 @@ func (s *acmeService) Register() error {
 	if err := client.AgreeToTOS(); err != nil {
 		return maskAny(err)
 	}
+
+	fmt.Printf(`
+Registration succeeded:
+
+Email       : %s
+Private key : %s
+Registration: %s
+
+Save these files in a secure location.
+`, s.Email, s.PrivateKeyPath, s.RegistrationPath)
 
 	return nil
 }
