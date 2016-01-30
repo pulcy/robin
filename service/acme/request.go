@@ -38,8 +38,9 @@ func (s *acmeService) requestCertificates(domains []string) error {
 
 	failedDomains := []string{}
 	for _, domain := range domains {
+		s.Logger.Debug("Obtaining certificate for '%s'", domain)
 		bundle := true
-		certificates, failures := s.acmeClient.ObtainCertificate([]string{domain}, bundle, s.privateKey)
+		certificates, failures := s.acmeClient.ObtainCertificate([]string{domain}, bundle, nil)
 		if len(failures) > 0 {
 			failedDomains = append(failedDomains, domain)
 			s.Logger.Error("ObtainCertificate for '%s' failed: %#v", domain, failures)
@@ -50,7 +51,7 @@ func (s *acmeService) requestCertificates(domains []string) error {
 		if err := s.saveCertificate(domain, certificates); err != nil {
 			s.Logger.Error("Failed to save certificate for '%s': %#v", domain, err)
 		} else {
-
+			s.Logger.Info("Stored certificate for '%s' in repository", domain)
 		}
 	}
 

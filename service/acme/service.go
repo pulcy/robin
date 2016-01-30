@@ -55,6 +55,7 @@ type acmeService struct {
 	domainCertificatesWaitIndex uint64
 	domainFileCache             map[string]string
 	domainFileCacheMutex        sync.Mutex
+	active                      bool
 }
 
 // NewAcmeService creates and initializes a new AcmeService implementation.
@@ -115,6 +116,8 @@ func (s *acmeService) Start() error {
 	if err != nil {
 		return maskAny(err)
 	}
+	client.ExcludeChallenges([]acme.Challenge{acme.TLSSNI01, acme.DNS01})
+	client.SetChallengeProvider(acme.HTTP01, newHttpChallengeProvider(s.HttpProviderConfig, s.HttpProviderDependencies))
 
 	// Save objects
 	s.privateKey = key
@@ -124,12 +127,21 @@ func (s *acmeService) Start() error {
 	if err := s.httpProvider.Start(); err != nil {
 		return maskAny(err)
 	}
+
+	// We're now active
+	s.active = true
+
 	return nil
 }
 
 // Extend fills is missing data provided by ACME into the list of services.
 // It also adds a service to handle ACME HTTP challenges
 func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.ServiceRegistrations, error) {
+	if !s.active {
+		// Not active, so nothing to extend
+		return services, nil
+	}
+
 	// Find domains that need a certificate
 	domainSet := make(map[string]struct{})
 	domains := []string{}

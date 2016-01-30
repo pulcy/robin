@@ -38,12 +38,13 @@ var (
 		privateHost     string
 
 		// acme
-		acmeHttpPort     int
-		acmeEmail        string
-		caDirURL         string
-		keyBits          int
-		privateKeyPath   string
-		registrationPath string
+		acmeHttpPort       int
+		acmeEmail          string
+		caDirURL           string
+		keyBits            int
+		privateKeyPath     string
+		registrationPath   string
+		tmpCertificatePath string
 	}
 )
 
@@ -68,6 +69,7 @@ func init() {
 	cmdRun.Flags().IntVar(&runArgs.keyBits, "key-bits", defaultKeyBits, "Length of generated keys in bits")
 	cmdRun.Flags().StringVar(&runArgs.privateKeyPath, "private-key-path", defaultPrivateKeyPath(), "Path of the private key for the registered account")
 	cmdRun.Flags().StringVar(&runArgs.registrationPath, "registration-path", defaultRegistrationPath(), "Path of the registration resource for the registered account")
+	cmdRun.Flags().StringVar(&runArgs.tmpCertificatePath, "tmp-certificate-path", defaultTmpCertificatePath, "Path of obtained tmp certificates")
 
 	cmdMain.AddCommand(cmdRun)
 }
@@ -97,12 +99,13 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 			EtcdPrefix: acmeEtcdPrefix,
 			Port:       runArgs.acmeHttpPort,
 		},
-		EtcdPrefix:       acmeEtcdPrefix,
-		CADirectoryURL:   runArgs.caDirURL,
-		KeyBits:          runArgs.keyBits,
-		Email:            runArgs.acmeEmail,
-		PrivateKeyPath:   runArgs.privateKeyPath,
-		RegistrationPath: runArgs.registrationPath,
+		EtcdPrefix:         acmeEtcdPrefix,
+		CADirectoryURL:     runArgs.caDirURL,
+		KeyBits:            runArgs.keyBits,
+		Email:              runArgs.acmeEmail,
+		PrivateKeyPath:     runArgs.privateKeyPath,
+		RegistrationPath:   runArgs.registrationPath,
+		TmpCertificatePath: runArgs.tmpCertificatePath,
 	}, acme.AcmeServiceDependencies{
 		HttpProviderDependencies: acme.HttpProviderDependencies{
 			Logger:     log,

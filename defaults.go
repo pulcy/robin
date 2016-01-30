@@ -12,14 +12,15 @@ const (
 	defaultSslCertsFolder = "/certs/"
 	defaultForceSsl       = false
 	defaultPrivateHost    = ""
-	defaultAcmeHttpPort   = 8011
 )
 
 const (
+	defaultAcmeHttpPort         = 8011
 	defaultKeyBits              = 2048
 	defaultCADirectoryURL       = "https://acme-v01.api.letsencrypt.org/directory"
 	defaultPrivateKeyPathTmpl   = "~/.pulcy/acme/private-key.pem"
 	defaultRegistrationPathTmpl = "~/.pulcy/acme/registration.json"
+	defaultTmpCertificatePath   = "/tmp/certificates"
 )
 
 func defaultPrivateKeyPath() string {
