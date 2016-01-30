@@ -61,17 +61,23 @@ func NewAcmeService(config AcmeServiceConfig, deps AcmeServiceDependencies) Acme
 // Start launches this services.
 func (s *acmeService) Start() error {
 	// Check arguments
+	missingArgs := []string{}
 	if s.Email == "" {
-		return maskAny(fmt.Errorf("Email empty"))
+		missingArgs = append(missingArgs, "acme-email")
 	}
 	if s.CADirectoryURL == "" {
-		return maskAny(fmt.Errorf("CADirectoryURL empty"))
+		missingArgs = append(missingArgs, "acme-directory-url")
 	}
 	if s.PrivateKeyPath == "" {
-		return maskAny(fmt.Errorf("PrivateKeyPath empty"))
+		missingArgs = append(missingArgs, "private-key-path")
 	}
 	if s.RegistrationPath == "" {
-		return maskAny(fmt.Errorf("RegistrationPath empty"))
+		missingArgs = append(missingArgs, "registration-path")
+	}
+
+	if len(missingArgs) > 0 {
+		s.Logger.Warning("ACME is not configured, some it will not be used. Missing: %v", missingArgs)
+		return nil
 	}
 
 	// Load private key
