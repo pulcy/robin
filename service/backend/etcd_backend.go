@@ -191,11 +191,11 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 					continue
 				}
 				srSel := ServiceSelector{
-					Weight:     sel.Weight,
-					Domain:     sel.Domain,
-					SslCert:    sel.SslCert,
-					PathPrefix: sel.PathPrefix,
-					Private:    sel.Private,
+					Weight:      sel.Weight,
+					Domain:      sel.Domain,
+					SslCertName: sel.SslCert,
+					PathPrefix:  sel.PathPrefix,
+					Private:     sel.Private,
 				}
 				for _, user := range sel.Users {
 					srSel.Users = append(srSel.Users, User{

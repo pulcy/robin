@@ -47,6 +47,10 @@ var (
 	}
 )
 
+type acmeServiceListener struct {
+	service *service.Service
+}
+
 func init() {
 	cmdRun.Flags().StringVar(&runArgs.etcdAddr, "etcd-addr", "", "Address of etcd backend")
 	cmdRun.Flags().StringVar(&runArgs.haproxyConfPath, "haproxy-conf", "/data/config/haproxy.cfg", "Path of haproxy config file")
@@ -87,6 +91,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 
 	// Prepare acme service
 	acmeEtcdPrefix := path.Join(etcdUrl.Path, etcdAcmeFolder)
+	acmeServiceListener := &acmeServiceListener{}
 	acmeService := acme.NewAcmeService(acme.AcmeServiceConfig{
 		HttpProviderConfig: acme.HttpProviderConfig{
 			EtcdPrefix: acmeEtcdPrefix,
@@ -104,6 +109,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 			EtcdClient: etcdClient,
 		},
 		LockService: lockService,
+		Listener:    acmeServiceListener,
 	})
 
 	// Prepare service
@@ -127,10 +133,18 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		Backend:     backend,
 		AcmeService: acmeService,
 	})
+	acmeServiceListener.service = service
 
 	// Start all services
 	if err := acmeService.Start(); err != nil {
 		Exitf("Failed to start ACME service: %#v", err)
 	}
 	service.Run()
+}
+
+// CertificatesUpdated is called when there is a change in one of the ACME generated certificates
+func (l *acmeServiceListener) CertificatesUpdated() {
+	if l.service != nil {
+		l.service.TriggerUpdate()
+	}
 }

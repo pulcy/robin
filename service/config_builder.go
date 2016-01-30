@@ -91,11 +91,15 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	certsSet := make(map[string]struct{})
 	for _, sr := range services {
 		for _, sel := range sr.Selectors {
-			if !sel.Private && sel.SslCert != "" {
-				if _, ok := certsSet[sel.SslCert]; !ok {
-					crt := fmt.Sprintf("crt %s", filepath.Join(s.SslCertsFolder, sel.SslCert))
+			if !sel.Private && sel.IsSecure() {
+				certPath := sel.TmpSslCertPath
+				if certPath == "" {
+					certPath = filepath.Join(s.SslCertsFolder, sel.SslCertName)
+				}
+				if _, ok := certsSet[certPath]; !ok {
+					crt := fmt.Sprintf("crt %s", certPath)
 					certs = append(certs, crt)
-					certsSet[sel.SslCert] = struct{}{}
+					certsSet[certPath] = struct{}{}
 				}
 			}
 		}
@@ -181,7 +185,7 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 func createAclRules(sel backend.ServiceSelector) []string {
 	result := []string{}
 	if sel.Domain != "" {
-		if sel.SslCert != "" {
+		if sel.IsSecure() {
 			result = append(result, fmt.Sprintf("ssl_fc_sni -i %s", sel.Domain))
 		} else {
 			result = append(result, fmt.Sprintf("hdr_dom(host) -i %s", sel.Domain))
