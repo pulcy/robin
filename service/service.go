@@ -214,7 +214,7 @@ func (s *Service) restartHaproxy() error {
 
 	s.Logger.Debug("Starting haproxy with %#v", args)
 	cmd := exec.Command(s.HaproxyPath, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGUSR1}
+	configureRestartHaproxyCmd(cmd)
 	cmd.Stdin = bytes.NewReader([]byte{})
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

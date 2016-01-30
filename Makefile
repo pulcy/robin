@@ -47,6 +47,7 @@ $(GOBUILDDIR):
 		github.com/coreos/go-etcd/etcd \
 		github.com/dchest/uniuri \
 		github.com/juju/errgo \
+		github.com/mitchellh/go-homedir \
 		github.com/op/go-logging \
 		github.com/spf13/cobra \
 		github.com/spf13/pflag \
