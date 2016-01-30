@@ -1,11 +1,13 @@
 package acme
 
 import (
+	"crypto/rsa"
 	"fmt"
 
 	"github.com/xenolf/lego/acme"
 
 	"git.pulcy.com/pulcy/load-balancer/service/backend"
+	"git.pulcy.com/pulcy/load-balancer/service/locks"
 )
 
 const (
@@ -16,6 +18,7 @@ const (
 type AcmeServiceConfig struct {
 	HttpProviderConfig
 
+	EtcdPrefix       string // Folder in ETCD to use ACME
 	CADirectoryURL   string // URL of ACME directory
 	KeyBits          int    // Size of generated keys (in bits)
 	Email            string // Registration email address
@@ -25,6 +28,8 @@ type AcmeServiceConfig struct {
 
 type AcmeServiceDependencies struct {
 	HttpProviderDependencies
+
+	LockService locks.LockService
 }
 
 type AcmeService interface {
@@ -37,8 +42,10 @@ type acmeService struct {
 	AcmeServiceConfig
 	AcmeServiceDependencies
 
-	httpProvider *httpChallengeProvider
-	acmeClient   *acme.Client
+	httpProvider                *httpChallengeProvider
+	acmeClient                  *acme.Client
+	privateKey                  *rsa.PrivateKey
+	domainCertificatesWaitIndex uint64
 }
 
 // NewAcmeService creates and initializes a new AcmeService implementation.
@@ -53,6 +60,7 @@ func NewAcmeService(config AcmeServiceConfig, deps AcmeServiceDependencies) Acme
 
 // Start launches this services.
 func (s *acmeService) Start() error {
+	// Check arguments
 	if s.Email == "" {
 		return maskAny(fmt.Errorf("Email empty"))
 	}
@@ -65,11 +73,14 @@ func (s *acmeService) Start() error {
 	if s.RegistrationPath == "" {
 		return maskAny(fmt.Errorf("RegistrationPath empty"))
 	}
+
+	// Load private key
 	key, err := s.getPrivateKey()
 	if err != nil {
 		return maskAny(err)
 	}
 
+	// Load registration
 	registration, err := s.getRegistration()
 	if err != nil {
 		return maskAny(err)
@@ -78,18 +89,22 @@ func (s *acmeService) Start() error {
 		return maskAny(fmt.Errorf("No registration found at %s", s.RegistrationPath))
 	}
 
+	// Create ACME client
 	user := acmeUser{
 		Email:        s.Email,
 		Registration: registration,
 		PrivateKey:   key,
 	}
-
 	client, err := acme.NewClient(s.CADirectoryURL, user, s.KeyBits)
 	if err != nil {
 		return maskAny(err)
 	}
+
+	// Save objects
+	s.privateKey = key
 	s.acmeClient = client
 
+	// Start HTTP challenge listener
 	if err := s.httpProvider.Start(); err != nil {
 		return maskAny(err)
 	}
@@ -99,7 +114,34 @@ func (s *acmeService) Start() error {
 // Extend fills is missing data provided by ACME into the list of services.
 // It also adds a service to handle ACME HTTP challenges
 func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.ServiceRegistrations, error) {
+	// Find domains that need a certificate
+	domainSet := make(map[string]struct{})
+	domains := []string{}
+	for _, sr := range services {
+		for _, sel := range sr.Selectors {
+			if sel.Private || sel.SslCert != "" || sel.Domain == "" {
+				continue
+			}
+			if _, ok := domainSet[sel.Domain]; !ok {
+				domainSet[sel.Domain] = struct{}{}
+				domains = append(domains, sel.Domain)
+			}
+		}
+	}
+
+	// Request certificates for the domains
+	if len(domains) > 0 {
+		go func() {
+			// Now request the certificates
+			if err := s.requestCertificates(domains); err != nil {
+				s.Logger.Error("Failed to request certificates: %#v", err)
+			}
+		}()
+	}
+
+	// Add HTTP challenge service
 	services = append(services, s.createAcmeServiceRegistration())
+
 	return services, nil
 }
 

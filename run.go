@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"path"
 
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/spf13/cobra"
@@ -9,17 +10,12 @@ import (
 	"git.pulcy.com/pulcy/load-balancer/service"
 	"git.pulcy.com/pulcy/load-balancer/service/acme"
 	"git.pulcy.com/pulcy/load-balancer/service/backend"
+	"git.pulcy.com/pulcy/load-balancer/service/locks"
 )
 
 const (
-	defaultStatsPort      = 7088
-	defaultStatsUser      = ""
-	defaultStatsPassword  = ""
-	defaultStatsSslCert   = ""
-	defaultSslCertsFolder = "/certs/"
-	defaultForceSsl       = false
-	defaultPrivateHost    = ""
-	defaultAcmeHttpPort   = 8011
+	etcdLocksFolder = "lb/locks"
+	etcdAcmeFolder  = "lb/acme"
 )
 
 var (
@@ -31,9 +27,7 @@ var (
 	}
 
 	runArgs struct {
-		backendEtcdAddr string
-		acmeEtcdAddr    string
-		acmeHttpPort    int
+		etcdAddr        string
 		haproxyConfPath string
 		statsPort       int
 		statsUser       string
@@ -42,12 +36,19 @@ var (
 		sslCertsFolder  string
 		forceSsl        bool
 		privateHost     string
+
+		// acme
+		acmeHttpPort     int
+		acmeEmail        string
+		caDirURL         string
+		keyBits          int
+		privateKeyPath   string
+		registrationPath string
 	}
 )
 
 func init() {
-	cmdRun.Flags().StringVar(&runArgs.backendEtcdAddr, "etcd-addr", "", "Address of etcd backend")
-	cmdRun.Flags().StringVar(&runArgs.acmeEtcdAddr, "acme-etcd-addr", "", "Address of etcd acme")
+	cmdRun.Flags().StringVar(&runArgs.etcdAddr, "etcd-addr", "", "Address of etcd backend")
 	cmdRun.Flags().StringVar(&runArgs.haproxyConfPath, "haproxy-conf", "/data/config/haproxy.cfg", "Path of haproxy config file")
 	cmdRun.Flags().IntVar(&runArgs.statsPort, "stats-port", defaultStatsPort, "Port for stats page")
 	cmdRun.Flags().StringVar(&runArgs.statsUser, "stats-user", defaultStatsUser, "User for stats page")
@@ -56,40 +57,53 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.sslCertsFolder, "ssl-certs", defaultSslCertsFolder, "Folder containing SSL certificate")
 	cmdRun.Flags().BoolVar(&runArgs.forceSsl, "force-ssl", defaultForceSsl, "Redirect HTTP to HTTPS")
 	cmdRun.Flags().StringVar(&runArgs.privateHost, "private-host", defaultPrivateHost, "IP address of private network")
+	// acme
 	cmdRun.Flags().IntVar(&runArgs.acmeHttpPort, "acme-http-port", defaultAcmeHttpPort, "Port to listen for ACME HTTP challenges on (internally)")
+	cmdRun.Flags().StringVar(&runArgs.acmeEmail, "acme-email", "", "Email account for ACME server")
+	cmdRun.Flags().StringVar(&runArgs.caDirURL, "acme-directory-url", defaultCADirectoryURL, "Directory URL of the ACME server")
+	cmdRun.Flags().IntVar(&runArgs.keyBits, "key-bits", defaultKeyBits, "Length of generated keys in bits")
+	cmdRun.Flags().StringVar(&runArgs.privateKeyPath, "private-key-path", defaultPrivateKeyPath(), "Path of the private key for the registered account")
+	cmdRun.Flags().StringVar(&runArgs.registrationPath, "registration-path", defaultRegistrationPath(), "Path of the registration resource for the registered account")
+
 	cmdMain.AddCommand(cmdRun)
 }
 
 func cmdRunRun(cmd *cobra.Command, args []string) {
-	// Prepare backend
-	if runArgs.backendEtcdAddr == "" {
+	// Parse arguments
+	if runArgs.etcdAddr == "" {
 		Exitf("Please specify --etcd-addr")
 	}
-	backendEtcdUrl, err := url.Parse(runArgs.backendEtcdAddr)
+	etcdUrl, err := url.Parse(runArgs.etcdAddr)
 	if err != nil {
-		Exitf("--etcd-addr '%s' is not valid: %#v", runArgs.backendEtcdAddr, err)
+		Exitf("--etcd-addr '%s' is not valid: %#v", runArgs.etcdAddr, err)
 	}
-	backend := backend.NewEtcdBackend(log, backendEtcdUrl)
+	etcdClient := etcd.NewClient([]string{"http://" + etcdUrl.Host})
+
+	// Prepare backend
+	backend := backend.NewEtcdBackend(log, etcdUrl)
+
+	// Prepare lockservice
+	lockService := locks.NewEtcdLockService(etcdClient, path.Join(etcdUrl.Path, etcdLocksFolder))
 
 	// Prepare acme service
-	if runArgs.acmeEtcdAddr == "" {
-		Exitf("Please specify --acme-etcd-addr")
-	}
-	acmeEtcdUrl, err := url.Parse(runArgs.acmeEtcdAddr)
-	if err != nil {
-		Exitf("--acme-etcd-addr '%s' is not valid: %#v", runArgs.acmeEtcdAddr, err)
-	}
-	acmeEtcdClient := etcd.NewClient([]string{"http://" + acmeEtcdUrl.Host})
+	acmeEtcdPrefix := path.Join(etcdUrl.Path, etcdAcmeFolder)
 	acmeService := acme.NewAcmeService(acme.AcmeServiceConfig{
 		HttpProviderConfig: acme.HttpProviderConfig{
-			EtcdPrefix: acmeEtcdUrl.Path,
+			EtcdPrefix: acmeEtcdPrefix,
 			Port:       runArgs.acmeHttpPort,
 		},
+		EtcdPrefix:       acmeEtcdPrefix,
+		CADirectoryURL:   runArgs.caDirURL,
+		KeyBits:          runArgs.keyBits,
+		Email:            runArgs.acmeEmail,
+		PrivateKeyPath:   runArgs.privateKeyPath,
+		RegistrationPath: runArgs.registrationPath,
 	}, acme.AcmeServiceDependencies{
 		HttpProviderDependencies: acme.HttpProviderDependencies{
 			Logger:     log,
-			EtcdClient: acmeEtcdClient,
+			EtcdClient: etcdClient,
 		},
+		LockService: lockService,
 	})
 
 	// Prepare service
