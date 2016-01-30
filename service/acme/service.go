@@ -1,9 +1,7 @@
 package acme
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 
 	"github.com/xenolf/lego/acme"
 
@@ -53,8 +51,20 @@ func NewAcmeService(config AcmeServiceConfig, deps AcmeServiceDependencies) Acme
 	}
 }
 
-// Register the account with the ACME server
-func (s *acmeService) Register() error {
+// Start launches this services.
+func (s *acmeService) Start() error {
+	if s.Email == "" {
+		return maskAny(fmt.Errorf("Email empty"))
+	}
+	if s.CADirectoryURL == "" {
+		return maskAny(fmt.Errorf("CADirectoryURL empty"))
+	}
+	if s.PrivateKeyPath == "" {
+		return maskAny(fmt.Errorf("PrivateKeyPath empty"))
+	}
+	if s.RegistrationPath == "" {
+		return maskAny(fmt.Errorf("RegistrationPath empty"))
+	}
 	key, err := s.getPrivateKey()
 	if err != nil {
 		return maskAny(err)
@@ -64,6 +74,9 @@ func (s *acmeService) Register() error {
 	if err != nil {
 		return maskAny(err)
 	}
+	if registration == nil {
+		return maskAny(fmt.Errorf("No registration found at %s", s.RegistrationPath))
+	}
 
 	user := acmeUser{
 		Email:        s.Email,
@@ -71,52 +84,6 @@ func (s *acmeService) Register() error {
 		PrivateKey:   key,
 	}
 
-	client, err := acme.NewClient(s.CADirectoryURL, user, s.KeyBits)
-	if err != nil {
-		return maskAny(err)
-	}
-
-	if registration == nil {
-		registration, err = client.Register()
-		if err != nil {
-			return maskAny(err)
-		}
-		if err := s.saveRegistration(registration); err != nil {
-			return maskAny(err)
-		}
-
-		user.Registration = registration
-		client, err = acme.NewClient(s.CADirectoryURL, user, s.KeyBits)
-		if err != nil {
-			return maskAny(err)
-		}
-	}
-
-	fmt.Printf("Find the terms here:%s\n", registration.TosURL)
-	if err := confirm("Do you agree with these terms?"); err != nil {
-		return maskAny(err)
-	}
-
-	if err := client.AgreeToTOS(); err != nil {
-		return maskAny(err)
-	}
-
-	fmt.Printf(`
-Registration succeeded:
-
-Email       : %s
-Private key : %s
-Registration: %s
-
-Save these files in a secure location.
-`, s.Email, s.PrivateKeyPath, s.RegistrationPath)
-
-	return nil
-}
-
-// Start launches this services.
-func (s *acmeService) Start() error {
-	var user acme.User // TODO
 	client, err := acme.NewClient(s.CADirectoryURL, user, s.KeyBits)
 	if err != nil {
 		return maskAny(err)
@@ -157,20 +124,4 @@ func (s *acmeService) createAcmeServiceRegistration() backend.ServiceRegistratio
 		HttpCheckPath: "",
 	}
 	return sr
-}
-
-func confirm(question string) error {
-	for {
-		fmt.Printf("%s [yes|no]", question)
-		bufStdin := bufio.NewReader(os.Stdin)
-		line, _, err := bufStdin.ReadLine()
-		if err != nil {
-			return err
-		}
-
-		if string(line) == "yes" || string(line) == "y" {
-			return nil
-		}
-		fmt.Println("Please enter 'yes' to confirm.")
-	}
 }
