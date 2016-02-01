@@ -48,12 +48,6 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	c.Section("global").Add(globalOptions...)
 	c.Section("defaults").Add(defaultsOptions...)
 
-	// Log services
-	s.Logger.Info("Found %d services", len(services))
-	for _, srv := range services {
-		s.Logger.Info("Service: %#v", srv)
-	}
-
 	// Create stats section
 	if s.StatsPort != 0 && s.StatsUser != "" && s.StatsPassword != "" {
 		statsSection := c.Section("frontend stats")

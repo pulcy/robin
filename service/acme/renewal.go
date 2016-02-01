@@ -62,7 +62,11 @@ func (rm *renewalMonitor) Start() {
 			}
 
 			// Wait a bit before checking for renewals again
-			time.Sleep(renewalSleep)
+			if len(domains) == 0 {
+				time.Sleep(time.Second * 10)
+			} else {
+				time.Sleep(renewalSleep)
+			}
 		}
 	}()
 }

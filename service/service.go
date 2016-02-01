@@ -121,14 +121,13 @@ func (s *Service) updateHaproxy() error {
 		return maskAny(err)
 	}
 
-	// Cleanup afterwards
-	defer os.Remove(tempConf)
-
-	// If nothing has changed, don't do anything
-	if s.lastConfig == config {
-		s.Logger.Debug("Config has not changed")
+	// If nothing has changed, no temp file is created, then do nothing
+	if tempConf == "" {
 		return nil
 	}
+
+	// Cleanup afterwards
+	defer os.Remove(tempConf)
 
 	// Validate the config
 	if err := s.validateConfig(tempConf); err != nil {
@@ -174,9 +173,22 @@ func (s *Service) createConfigFile() (string, string, error) {
 	// Sort the services
 	services.Sort()
 
+	// Render the content of the haproxy.cfg file
 	config, err := s.renderConfig(services)
 	if err != nil {
 		return "", "", maskAny(err)
+	}
+
+	// If nothing has changed, don't do anything
+	if s.lastConfig == config {
+		s.Logger.Debug("Config has not changed")
+		return config, "", nil
+	}
+
+	// Log services
+	s.Logger.Info("Found %d services", len(services))
+	for srvIndex, srv := range services {
+		s.Logger.Debug("Service %d: %#v", srvIndex, srv)
 	}
 
 	// Create temp file first
