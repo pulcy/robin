@@ -1,14 +1,11 @@
 package acme
 
 import (
-	"crypto/rsa"
 	"fmt"
-	"sync"
 
 	"github.com/xenolf/lego/acme"
 
 	"git.pulcy.com/pulcy/load-balancer/service/backend"
-	"git.pulcy.com/pulcy/load-balancer/service/locks"
 )
 
 const (
@@ -23,20 +20,22 @@ type AcmeServiceListener interface {
 type AcmeServiceConfig struct {
 	HttpProviderConfig
 
-	EtcdPrefix         string // Folder in ETCD to use ACME
-	CADirectoryURL     string // URL of ACME directory
-	KeyBits            int    // Size of generated keys (in bits)
-	Email              string // Registration email address
-	PrivateKeyPath     string // Path of file containing private key
-	RegistrationPath   string // Path of file containing acme.RegistrationResource
-	TmpCertificatePath string // Path of directory where temporary certificates are written to.
+	EtcdPrefix       string // Folder in ETCD to use ACME
+	CADirectoryURL   string // URL of ACME directory
+	KeyBits          int    // Size of generated keys (in bits)
+	Email            string // Registration email address
+	PrivateKeyPath   string // Path of file containing private key
+	RegistrationPath string // Path of file containing acme.RegistrationResource
 }
 
 type AcmeServiceDependencies struct {
 	HttpProviderDependencies
 
-	LockService locks.LockService
-	Listener    AcmeServiceListener
+	Listener   AcmeServiceListener
+	Repository CertificatesRepository
+	Cache      CertificatesFileCache
+	Renewal    RenewalMonitor
+	Requester  CertificateRequester
 }
 
 type AcmeService interface {
@@ -49,13 +48,8 @@ type acmeService struct {
 	AcmeServiceConfig
 	AcmeServiceDependencies
 
-	httpProvider                *httpChallengeProvider
-	acmeClient                  *acme.Client
-	privateKey                  *rsa.PrivateKey
-	domainCertificatesWaitIndex uint64
-	domainFileCache             map[string]string
-	domainFileCacheMutex        sync.Mutex
-	active                      bool
+	httpProvider *httpChallengeProvider
+	active       bool
 }
 
 // NewAcmeService creates and initializes a new AcmeService implementation.
@@ -64,8 +58,7 @@ func NewAcmeService(config AcmeServiceConfig, deps AcmeServiceDependencies) Acme
 		AcmeServiceConfig:       config,
 		AcmeServiceDependencies: deps,
 
-		httpProvider:    newHttpChallengeProvider(config.HttpProviderConfig, deps.HttpProviderDependencies),
-		domainFileCache: make(map[string]string),
+		httpProvider: newHttpChallengeProvider(config.HttpProviderConfig, deps.HttpProviderDependencies),
 	}
 }
 
@@ -120,18 +113,35 @@ func (s *acmeService) Start() error {
 	client.SetChallengeProvider(acme.HTTP01, newHttpChallengeProvider(s.HttpProviderConfig, s.HttpProviderDependencies))
 
 	// Save objects
-	s.privateKey = key
-	s.acmeClient = client
+	s.Requester.Initialize(client)
 
 	// Start HTTP challenge listener
 	if err := s.httpProvider.Start(); err != nil {
 		return maskAny(err)
 	}
 
+	// Monitor the repository for changes
+	s.repositoryMonitorLoop()
+
+	// Start the renewal monitor
+	s.Renewal.Start()
+
 	// We're now active
 	s.active = true
 
 	return nil
+}
+
+// repositoryMonitorLoop monitors the certificates repository and flushes the
+// domain file cache when there is a change in the repository.
+func (s *acmeService) repositoryMonitorLoop() {
+	go func() {
+		for {
+			s.Cache.Clear()
+			s.Listener.CertificatesUpdated()
+			s.Repository.WatchDomainCertificates()
+		}
+	}()
 }
 
 // Extend fills is missing data provided by ACME into the list of services.
@@ -145,6 +155,7 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 	// Find domains that need a certificate
 	domainSet := make(map[string]struct{})
 	domains := []string{}
+	allDomains := []string{}
 	updatedServices := backend.ServiceRegistrations{}
 	for _, sr := range services {
 		for selIndex, sel := range sr.Selectors {
@@ -153,7 +164,8 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 			}
 			// Domain needs a certificate, try cache first
 			domain := sel.Domain
-			path, err := s.getDomainCertificatePath(domain)
+			allDomains = append(allDomains, domain)
+			path, err := s.Cache.GetDomainCertificatePath(domain)
 			if err != nil {
 				s.Logger.Error("Failed to get domain certificate path for '%s': %#v", domain, err)
 			} else if path != "" {
@@ -174,8 +186,12 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 	if len(domains) > 0 {
 		go func() {
 			// Now request the certificates
-			if err := s.requestCertificates(domains); err != nil {
-				s.Logger.Error("Failed to request certificates: %#v", err)
+			if err := s.Requester.RequestCertificates(domains); err != nil {
+				if IsNotMaster(err) {
+					s.Logger.Info("Another instance is master, so requesting certificates is cancelled.")
+				} else {
+					s.Logger.Error("Failed to request certificates: %#v", err)
+				}
 			}
 		}()
 	}
@@ -183,9 +199,13 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 	// Add HTTP challenge service
 	updatedServices = append(updatedServices, s.createAcmeServiceRegistration())
 
+	// Inform the renewal monitor
+	s.Renewal.SetUsedDomains(allDomains)
+
 	return updatedServices, nil
 }
 
+// createAcmeServiceRegistration creates a ServiceRegistration item for the ACME HTTP challenge
 func (s *acmeService) createAcmeServiceRegistration() backend.ServiceRegistration {
 	pathPrefix := acme.HTTP01ChallengePath("")
 	sr := backend.ServiceRegistration{

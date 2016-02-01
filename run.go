@@ -93,26 +93,32 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 
 	// Prepare acme service
 	acmeEtcdPrefix := path.Join(etcdUrl.Path, etcdAcmeFolder)
+	certsRepository := acme.NewEtcdCertificatesRepository(acmeEtcdPrefix, etcdClient)
+	certsCache := acme.NewCertificatesFileCache(runArgs.tmpCertificatePath, certsRepository, log)
+	certsRequester := acme.NewCertificateRequester(log, certsRepository, lockService)
+	renewal := acme.NewRenewalMonitor(log, certsRepository, certsRequester)
 	acmeServiceListener := &acmeServiceListener{}
 	acmeService := acme.NewAcmeService(acme.AcmeServiceConfig{
 		HttpProviderConfig: acme.HttpProviderConfig{
 			EtcdPrefix: acmeEtcdPrefix,
 			Port:       runArgs.acmeHttpPort,
 		},
-		EtcdPrefix:         acmeEtcdPrefix,
-		CADirectoryURL:     runArgs.caDirURL,
-		KeyBits:            runArgs.keyBits,
-		Email:              runArgs.acmeEmail,
-		PrivateKeyPath:     runArgs.privateKeyPath,
-		RegistrationPath:   runArgs.registrationPath,
-		TmpCertificatePath: runArgs.tmpCertificatePath,
+		EtcdPrefix:       acmeEtcdPrefix,
+		CADirectoryURL:   runArgs.caDirURL,
+		KeyBits:          runArgs.keyBits,
+		Email:            runArgs.acmeEmail,
+		PrivateKeyPath:   runArgs.privateKeyPath,
+		RegistrationPath: runArgs.registrationPath,
 	}, acme.AcmeServiceDependencies{
 		HttpProviderDependencies: acme.HttpProviderDependencies{
 			Logger:     log,
 			EtcdClient: etcdClient,
 		},
-		LockService: lockService,
-		Listener:    acmeServiceListener,
+		Listener:   acmeServiceListener,
+		Repository: certsRepository,
+		Cache:      certsCache,
+		Renewal:    renewal,
+		Requester:  certsRequester,
 	})
 
 	// Prepare service

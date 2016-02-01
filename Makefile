@@ -43,6 +43,7 @@ $(GOBINDATA):
 $(GOBUILDDIR):
 	@mkdir -p $(ORGDIR)
 	@rm -f $(REPODIR) && ln -s ../../../.. $(REPODIR)
+	@pulcy get git@git.pulcy.com:pulcy/retry-go.git $(ORGDIR)/../pulcy/retry-go
 	@cd $(GOPATH) && pulcy go get \
 		github.com/coreos/go-etcd/etcd \
 		github.com/dchest/uniuri \

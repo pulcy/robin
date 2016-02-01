@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dchest/uniuri"
+	"github.com/op/go-logging"
 	"github.com/xenolf/lego/acme"
 
 	"git.pulcy.com/pulcy/load-balancer/service/locks"
@@ -20,14 +21,42 @@ var (
 	lockOwnerID = uniuri.New()
 )
 
-func (s *acmeService) requestCertificates(domains []string) error {
+type CertificateRequester interface {
+	Initialize(acmeClient *acme.Client)
+	RequestCertificates(domains []string) error
+}
+
+type certificateRequester struct {
+	Logger      *logging.Logger
+	Repository  CertificatesRepository
+	LockService locks.LockService
+
+	acmeClient *acme.Client
+}
+
+func NewCertificateRequester(logger *logging.Logger, repository CertificatesRepository, lockService locks.LockService) CertificateRequester {
+	return &certificateRequester{
+		Logger:      logger,
+		Repository:  repository,
+		LockService: lockService,
+	}
+}
+
+func (cr *certificateRequester) Initialize(acmeClient *acme.Client) {
+	cr.acmeClient = acmeClient
+}
+
+// requestCertificates tries to request certificates for all given domains.
+// It first tries to claims to be the master. If that does not succeed,
+// it returns a NotMasterError
+func (s *certificateRequester) RequestCertificates(domains []string) error {
 	isMaster, lock, err := s.claimRequestCertificatesLock()
 	if err != nil {
 		return maskAny(err)
 	}
 	if !isMaster {
 		s.Logger.Debug("requestCertificates ends because another instance is requesting certificates")
-		return nil
+		return maskAny(NotMasterError)
 	}
 
 	// We're the master, let's request some certificates
@@ -62,12 +91,12 @@ func (s *acmeService) requestCertificates(domains []string) error {
 }
 
 // saveCertificate stores the given certificate in ETCD.
-func (s *acmeService) saveCertificate(domain string, cert acme.CertificateResource) error {
+func (s *certificateRequester) saveCertificate(domain string, cert acme.CertificateResource) error {
 	// Combine certificate + private key (for haproxy)
 	combined := append(cert.Certificate, cert.PrivateKey...)
 
 	// Store combined certificate in ETCD
-	if err := s.storeDomainCertificate(domain, combined); err != nil {
+	if err := s.Repository.StoreDomainCertificate(domain, combined); err != nil {
 		return maskAny(err)
 	}
 
@@ -79,7 +108,7 @@ func (s *acmeService) saveCertificate(domain string, cert acme.CertificateResour
 // On success it returns true with a lock.
 // When the lock is already claimed, it returns false, nil.
 // When another error occurs, this error is returned.
-func (s *acmeService) claimRequestCertificatesLock() (bool, *locks.Lock, error) {
+func (s *certificateRequester) claimRequestCertificatesLock() (bool, *locks.Lock, error) {
 	// Create lock
 	lock, err := s.LockService.NewLock(requestCertificatesLockName, lockOwnerID, requestCertificatesLockTTL)
 	if err != nil {

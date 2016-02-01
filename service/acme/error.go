@@ -5,5 +5,10 @@ import (
 )
 
 var (
-	maskAny = errgo.MaskFunc(errgo.Any)
+	NotMasterError = errgo.New("not master")
+	maskAny        = errgo.MaskFunc(errgo.Any)
 )
+
+func IsNotMaster(err error) bool {
+	return errgo.Cause(err) == NotMasterError
+}
