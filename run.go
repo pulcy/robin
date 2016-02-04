@@ -25,7 +25,7 @@ import (
 	"git.pulcy.com/pulcy/load-balancer/service"
 	"git.pulcy.com/pulcy/load-balancer/service/acme"
 	"git.pulcy.com/pulcy/load-balancer/service/backend"
-	"git.pulcy.com/pulcy/load-balancer/service/locks"
+	"git.pulcy.com/pulcy/load-balancer/service/mutex"
 )
 
 const (
@@ -116,14 +116,14 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		Exitf("Failed to backend: %#v", err)
 	}
 
-	// Prepare lockservice
-	lockService := locks.NewEtcdLockService(etcdClient, path.Join(etcdUrl.Path, etcdLocksFolder))
+	// Prepare global mutext service
+	gmService := mutex.NewEtcdGlobalMutexService(etcdClient, path.Join(etcdUrl.Path, etcdLocksFolder))
 
 	// Prepare acme service
 	acmeEtcdPrefix := path.Join(etcdUrl.Path, etcdAcmeFolder)
 	certsRepository := acme.NewEtcdCertificatesRepository(acmeEtcdPrefix, etcdClient)
 	certsCache := acme.NewCertificatesFileCache(runArgs.tmpCertificatePath, certsRepository, log)
-	certsRequester := acme.NewCertificateRequester(log, certsRepository, lockService)
+	certsRequester := acme.NewCertificateRequester(log, certsRepository, gmService)
 	renewal := acme.NewRenewalMonitor(log, certsRepository, certsRequester)
 	acmeServiceListener := &acmeServiceListener{}
 	acmeService := acme.NewAcmeService(acme.AcmeServiceConfig{

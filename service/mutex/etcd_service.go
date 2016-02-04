@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package locks
+package mutex
 
 import (
 	"fmt"
 	"time"
 
 	"github.com/coreos/etcd/client"
+	"github.com/dchest/uniuri"
 	"github.com/juju/errgo"
 	"golang.org/x/net/context"
 )
@@ -36,47 +37,43 @@ func isEtcdWithCode(err error, errCode int) bool {
 	return false
 }
 
-// NewEtcdLockService returns a lock service implementation
+// NewEtcdGlobalMutexService returns a global mutex service implementation
 // based on ETCD.
-func NewEtcdLockService(etcdClient client.Client, prefix string) LockService {
-	return &etcdLockService{
+func NewEtcdGlobalMutexService(etcdClient client.Client, prefix string) GlobalMutexService {
+	return &etcdGlobalMutexService{
 		etcdClient: etcdClient,
 		prefix:     prefix,
+		ownerID:    uniuri.New(),
 	}
 }
 
-type etcdLockService struct {
+type etcdGlobalMutexService struct {
 	etcdClient client.Client
 	prefix     string
+	ownerID    string
 }
 
-type localLock struct {
-	OwnerID string
-	Expires time.Time
-}
-
-// NewLock creates a new lock with a given name.
-// The lock is initialized but not yet claimed.
-// name is the name of the new lock. This name is accessible globally in the cluster
-// ownerID is an identifier of the owner of the lock. This value must be unique within the cluster
-// lockTTL is the numer of seconds before the lock will automatically be released
-func (ls *etcdLockService) NewLock(name, ownerID string, lockTTL time.Duration) (*Lock, error) {
-	l, err := newLock(name, ownerID, lockTTL, ls)
+// New creates a new global mutex with a given name.
+// The mutex is initialized but not yet claimed.
+// name is the name of the new mutex. This name is accessible globally in the cluster
+// ttl is the amount of time before the lock will automatically be released
+func (gms *etcdGlobalMutexService) New(name string, ttl time.Duration) (*GlobalMutex, error) {
+	m, err := newMutex(name, ttl, gms)
 	if err != nil {
 		return nil, maskAny(err)
 	}
-	return l, nil
+	return m, nil
 }
 
 // Claim tries to claim a lock with given name and assign it to the given owner.
 // If successful, it returns nil, otherwise it returns an error.
-func (ls *etcdLockService) Claim(name, ownerID string, lockTTL time.Duration) error {
-	kAPI := client.NewKeysAPI(ls.etcdClient)
+func (gms *etcdGlobalMutexService) Claim(name string, ttl time.Duration) error {
+	kAPI := client.NewKeysAPI(gms.etcdClient)
 	options := &client.SetOptions{
 		PrevExist: client.PrevNoExist,
-		TTL:       lockTTL,
+		TTL:       ttl,
 	}
-	_, err := kAPI.Set(context.Background(), ls.key(name), ownerID, options)
+	_, err := kAPI.Set(context.Background(), gms.key(name), gms.ownerID, options)
 	if err != nil {
 		if isEtcdWithCode(err, client.ErrorCodeNodeExist) {
 			return maskAny(errgo.WithCausef(nil, AlreadyLockedError, name))
@@ -89,14 +86,14 @@ func (ls *etcdLockService) Claim(name, ownerID string, lockTTL time.Duration) er
 
 // Update tries to update a lock with given name to the given ownerID.
 // This must be called often enough to avoid TTL expiration.
-func (ls *etcdLockService) Update(name, ownerID string, lockTTL time.Duration) error {
-	kAPI := client.NewKeysAPI(ls.etcdClient)
+func (gms *etcdGlobalMutexService) Update(name string, ttl time.Duration) error {
+	kAPI := client.NewKeysAPI(gms.etcdClient)
 	options := &client.SetOptions{
-		PrevValue: ownerID,
+		PrevValue: gms.ownerID,
 		PrevExist: client.PrevExist,
-		TTL:       lockTTL,
+		TTL:       ttl,
 	}
-	_, err := kAPI.Set(context.Background(), ls.key(name), ownerID, options)
+	_, err := kAPI.Set(context.Background(), gms.key(name), gms.ownerID, options)
 	if err != nil {
 		if isEtcdWithCode(err, client.ErrorCodeTestFailed) {
 			// Lock did not have ownerID as previous value
@@ -113,12 +110,12 @@ func (ls *etcdLockService) Update(name, ownerID string, lockTTL time.Duration) e
 }
 
 // Release releases the lock with given name from the given ownerID.
-func (ls *etcdLockService) Release(name, ownerID string) error {
-	kAPI := client.NewKeysAPI(ls.etcdClient)
+func (gms *etcdGlobalMutexService) Release(name string) error {
+	kAPI := client.NewKeysAPI(gms.etcdClient)
 	options := &client.DeleteOptions{
-		PrevValue: ownerID,
+		PrevValue: gms.ownerID,
 	}
-	_, err := kAPI.Delete(context.Background(), ls.key(name), options)
+	_, err := kAPI.Delete(context.Background(), gms.key(name), options)
 	if err != nil {
 		if isEtcdWithCode(err, client.ErrorCodeTestFailed) {
 			// Lock did not have ownerID as previous value
@@ -133,6 +130,6 @@ func (ls *etcdLockService) Release(name, ownerID string) error {
 	return nil
 }
 
-func (ls *etcdLockService) key(name string) string {
-	return fmt.Sprintf("%s/%s/%s", ls.prefix, locksPrefix, name)
+func (gms *etcdGlobalMutexService) key(name string) string {
+	return fmt.Sprintf("%s/%s/%s", gms.prefix, locksPrefix, name)
 }

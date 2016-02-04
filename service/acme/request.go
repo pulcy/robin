@@ -18,11 +18,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dchest/uniuri"
 	"github.com/op/go-logging"
 	"github.com/xenolf/lego/acme"
 
-	"git.pulcy.com/pulcy/load-balancer/service/locks"
+	"git.pulcy.com/pulcy/load-balancer/service/mutex"
 )
 
 const (
@@ -31,28 +30,24 @@ const (
 	requestDelay                = time.Second * 5
 )
 
-var (
-	lockOwnerID = uniuri.New()
-)
-
 type CertificateRequester interface {
 	Initialize(acmeClient *acme.Client)
 	RequestCertificates(domains []string) error
 }
 
 type certificateRequester struct {
-	Logger      *logging.Logger
-	Repository  CertificatesRepository
-	LockService locks.LockService
+	Logger       *logging.Logger
+	Repository   CertificatesRepository
+	mutexService mutex.GlobalMutexService
 
 	acmeClient *acme.Client
 }
 
-func NewCertificateRequester(logger *logging.Logger, repository CertificatesRepository, lockService locks.LockService) CertificateRequester {
+func NewCertificateRequester(logger *logging.Logger, repository CertificatesRepository, mutexService mutex.GlobalMutexService) CertificateRequester {
 	return &certificateRequester{
-		Logger:      logger,
-		Repository:  repository,
-		LockService: lockService,
+		Logger:       logger,
+		Repository:   repository,
+		mutexService: mutexService,
 	}
 }
 
@@ -64,7 +59,7 @@ func (cr *certificateRequester) Initialize(acmeClient *acme.Client) {
 // It first tries to claims to be the master. If that does not succeed,
 // it returns a NotMasterError
 func (s *certificateRequester) RequestCertificates(domains []string) error {
-	isMaster, lock, err := s.claimRequestCertificatesLock()
+	isMaster, lock, err := s.claimRequestCertificatesMutex()
 	if err != nil {
 		return maskAny(err)
 	}
@@ -74,7 +69,7 @@ func (s *certificateRequester) RequestCertificates(domains []string) error {
 	}
 
 	// We're the master, let's request some certificates
-	defer lock.Release()
+	defer lock.Unlock()
 
 	// Wait a bit to give haproxy the time to restart
 	time.Sleep(requestDelay)
@@ -117,27 +112,27 @@ func (s *certificateRequester) saveCertificate(domain string, cert acme.Certific
 	return nil
 }
 
-// claimRequestCertificatesLock tries to claim the distributed lock for
+// claimRequestCertificatesMutex tries to claim the distributed mutex for
 // requesting certificates.
-// On success it returns true with a lock.
-// When the lock is already claimed, it returns false, nil.
+// On success it returns true with a mutex.
+// When the mutex is already claimed, it returns false, nil.
 // When another error occurs, this error is returned.
-func (s *certificateRequester) claimRequestCertificatesLock() (bool, *locks.Lock, error) {
-	// Create lock
-	lock, err := s.LockService.NewLock(requestCertificatesLockName, lockOwnerID, requestCertificatesLockTTL)
+func (s *certificateRequester) claimRequestCertificatesMutex() (bool, *mutex.GlobalMutex, error) {
+	// Create mutex
+	m, err := s.mutexService.New(requestCertificatesLockName, requestCertificatesLockTTL)
 	if err != nil {
 		return false, nil, maskAny(err)
 	}
 
-	// Try to claim lock
-	if err := lock.Claim(); err != nil {
-		if locks.IsAlreadyLocked(err) {
-			// Another instance has the lock
+	// Try to claim mute
+	if err := m.Lock(); err != nil {
+		if mutex.IsAlreadyLocked(err) {
+			// Another instance has the mutex
 			return false, nil, nil
 		}
 		return false, nil, maskAny(err)
 	}
 
-	// We've got the lock
-	return true, lock, nil
+	// We've got the mutex and it is locked
+	return true, m, nil
 }
