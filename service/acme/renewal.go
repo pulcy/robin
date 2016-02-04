@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"git.pulcy.com/pulcy/retry-go"
+	"github.com/giantswarm/retry-go"
 	"github.com/op/go-logging"
 	"github.com/xenolf/lego/acme"
 )

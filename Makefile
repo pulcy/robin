@@ -7,6 +7,7 @@ COMMIT := $(shell git rev-parse --short HEAD)
 GOBUILDDIR := $(SCRIPTDIR)/.gobuild
 SRCDIR := $(SCRIPTDIR)
 BINDIR := $(ROOTDIR)
+VENDORDIR := $(SCRIPTDIR)/vendor
 
 ORGPATH := git.pulcy.com/pulcy
 ORGDIR := $(GOBUILDDIR)/src/$(ORGPATH)
@@ -32,24 +33,24 @@ SOURCES := $(shell find $(SRCDIR) -name '*.go')
 all: $(BIN)
 
 clean:
-	rm -Rf $(BIN) $(BINGPG) $(GOBUILDDIR)
+	rm -Rf $(BIN) $(GOBUILDDIR)
 
 local:
 	@${MAKE} -B GOOS=$(shell go env GOHOSTOS) GOARCH=$(shell go env GOHOSTARCH) $(BIN)
 
 deps:
-	@${MAKE} -B -s $(GOBUILDDIR) $(GOBINDATA)
-
-$(GOBINDATA):
-	GOPATH=$(GOPATH) go get github.com/jteeuwen/go-bindata/...
+	@${MAKE} -B -s $(GOBUILDDIR)
 
 $(GOBUILDDIR):
 	@mkdir -p $(ORGDIR)
 	@rm -f $(REPODIR) && ln -s ../../../.. $(REPODIR)
-	@pulcy get git@git.pulcy.com:pulcy/retry-go.git $(ORGDIR)/../pulcy/retry-go
-	@cd $(GOPATH) && pulcy go get \
+
+update-vendor:
+	@rm -Rf $(VENDORDIR)
+	@pulcy go vendor -V $(VENDORDIR) \
 		github.com/coreos/go-etcd/etcd \
 		github.com/dchest/uniuri \
+		github.com/giantswarm/retry-go \
 		github.com/juju/errgo \
 		github.com/mitchellh/go-homedir \
 		github.com/op/go-logging \
@@ -59,15 +60,13 @@ $(GOBUILDDIR):
 
 $(BIN): $(GOBUILDDIR) $(SOURCES)
 	docker run \
-	    --rm \
-	    -v $(ROOTDIR):/usr/code \
-	    -e GOPATH=/usr/code/.gobuild \
-	    -e GOOS=$(GOOS) \
-	    -e GOARCH=$(GOARCH) \
-	    -e CGO_ENABLED=0 \
-	    -w /usr/code/ \
-	    golang:$(GOVERSION) \
-	    go build -a -installsuffix netgo -tags netgo -ldflags "-X main.projectVersion=$(VERSION) -X main.projectBuild=$(COMMIT)" -o /usr/code/$(PROJECT)
-
-docker: $(BIN)
-	docker build -t load-balancer .
+		--rm \
+		-v $(ROOTDIR):/usr/code \
+		-e GO15VENDOREXPERIMENT=1 \
+		-e GOPATH=/usr/code/.gobuild \
+		-e GOOS=$(GOOS) \
+		-e GOARCH=$(GOARCH) \
+		-e CGO_ENABLED=0 \
+		-w /usr/code/ \
+		golang:$(GOVERSION) \
+		go build -a -installsuffix netgo -tags netgo -ldflags "-X main.projectVersion=$(VERSION) -X main.projectBuild=$(COMMIT)" -o /usr/code/$(PROJECT) $(REPOPATH)
