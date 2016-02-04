@@ -16,6 +16,7 @@ package main
 
 import (
 	"net/url"
+	"os"
 	"path"
 
 	"github.com/coreos/go-etcd/etcd"
@@ -67,6 +68,9 @@ type acmeServiceListener struct {
 }
 
 func init() {
+	defaultAcmeEmail := os.Getenv("ACME_EMAIL")
+	defaultStatsPassword := os.Getenv("STATS_PASSWORD")
+	defaultStatsUser := os.Getenv("STATS_USER")
 	cmdRun.Flags().StringVar(&runArgs.etcdAddr, "etcd-addr", "", "Address of etcd backend")
 	cmdRun.Flags().StringVar(&runArgs.haproxyConfPath, "haproxy-conf", "/data/config/haproxy.cfg", "Path of haproxy config file")
 	cmdRun.Flags().IntVar(&runArgs.statsPort, "stats-port", defaultStatsPort, "Port for stats page")
@@ -78,7 +82,7 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.privateHost, "private-host", defaultPrivateHost, "IP address of private network")
 	// acme
 	cmdRun.Flags().IntVar(&runArgs.acmeHttpPort, "acme-http-port", defaultAcmeHttpPort, "Port to listen for ACME HTTP challenges on (internally)")
-	cmdRun.Flags().StringVar(&runArgs.acmeEmail, "acme-email", "", "Email account for ACME server")
+	cmdRun.Flags().StringVar(&runArgs.acmeEmail, "acme-email", defaultAcmeEmail, "Email account for ACME server")
 	cmdRun.Flags().StringVar(&runArgs.caDirURL, "acme-directory-url", defaultCADirectoryURL, "Directory URL of the ACME server")
 	cmdRun.Flags().IntVar(&runArgs.keyBits, "key-bits", defaultKeyBits, "Length of generated keys in bits")
 	cmdRun.Flags().StringVar(&runArgs.privateKeyPath, "private-key-path", defaultPrivateKeyPath(), "Path of the private key for the registered account")

@@ -20,8 +20,6 @@ import (
 
 const (
 	defaultStatsPort      = 7088
-	defaultStatsUser      = ""
-	defaultStatsPassword  = ""
 	defaultStatsSslCert   = ""
 	defaultSslCertsFolder = "/certs/"
 	defaultForceSsl       = false
