@@ -34,6 +34,9 @@ all: $(BIN)
 clean:
 	rm -Rf $(BIN) $(BINGPG) $(GOBUILDDIR)
 
+local:
+	@${MAKE} -B GOOS=$(shell go env GOHOSTOS) GOARCH=$(shell go env GOHOSTARCH) $(BIN)
+
 deps:
 	@${MAKE} -B -s $(GOBUILDDIR) $(GOBINDATA)
 
