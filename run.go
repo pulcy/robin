@@ -19,7 +19,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/coreos/etcd/client"
 	"github.com/spf13/cobra"
 
 	"git.pulcy.com/pulcy/load-balancer/service"
@@ -101,10 +101,20 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	if err != nil {
 		Exitf("--etcd-addr '%s' is not valid: %#v", runArgs.etcdAddr, err)
 	}
-	etcdClient := etcd.NewClient([]string{"http://" + etcdUrl.Host})
+	etcdCfg := client.Config{
+		Endpoints: []string{"http://" + etcdUrl.Host},
+		Transport: client.DefaultTransport,
+	}
+	etcdClient, err := client.New(etcdCfg)
+	if err != nil {
+		Exitf("Failed to initialize ETCD client: %#v", err)
+	}
 
 	// Prepare backend
-	backend := backend.NewEtcdBackend(log, etcdUrl)
+	backend, err := backend.NewEtcdBackend(log, etcdUrl)
+	if err != nil {
+		Exitf("Failed to backend: %#v", err)
+	}
 
 	// Prepare lockservice
 	lockService := locks.NewEtcdLockService(etcdClient, path.Join(etcdUrl.Path, etcdLocksFolder))

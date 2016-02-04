@@ -22,8 +22,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/coreos/etcd/client"
 	"github.com/op/go-logging"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -32,33 +33,43 @@ const (
 )
 
 type etcdBackend struct {
-	client    *etcd.Client
-	waitIndex uint64
-	Logger    *logging.Logger
-	prefix    string
+	client  client.Client
+	watcher client.Watcher
+	Logger  *logging.Logger
+	prefix  string
 }
 
-func NewEtcdBackend(logger *logging.Logger, uri *url.URL) Backend {
-	urls := make([]string, 0)
+func NewEtcdBackend(logger *logging.Logger, uri *url.URL) (Backend, error) {
+	cfg := client.Config{
+		Transport: client.DefaultTransport,
+	}
 	if uri.Host != "" {
-		urls = append(urls, "http://"+uri.Host)
+		cfg.Endpoints = append(cfg.Endpoints, "http://"+uri.Host)
 	}
+	c, err := client.New(cfg)
+	if err != nil {
+		return nil, maskAny(err)
+	}
+	kAPI := client.NewKeysAPI(c)
+	options := &client.WatcherOptions{
+		Recursive: true,
+	}
+	watcher := kAPI.Watcher(uri.Path, options)
 	return &etcdBackend{
-		client: etcd.NewClient(urls),
-		prefix: uri.Path,
-		Logger: logger,
-	}
+		client:  c,
+		watcher: watcher,
+		prefix:  uri.Path,
+		Logger:  logger,
+	}, nil
 }
 
 // Watch for changes on a path and return where there is a change.
 func (eb *etcdBackend) Watch() error {
-	resp, err := eb.client.Watch(eb.prefix, eb.waitIndex, true, nil, nil)
+	_, err := eb.watcher.Next(context.Background())
 	if err != nil {
 		return maskAny(err)
-	} else {
-		eb.waitIndex = resp.EtcdIndex + 1
-		return nil
 	}
+	return nil
 }
 
 // Load all registered services
@@ -81,9 +92,12 @@ func (eb *etcdBackend) Services() (ServiceRegistrations, error) {
 // Load all registered services
 func (eb *etcdBackend) readServicesTree() (ServiceRegistrations, error) {
 	etcdPath := path.Join(eb.prefix, servicePrefix)
-	sort := false
-	recursive := true
-	resp, err := eb.client.Get(etcdPath, sort, recursive)
+	kAPI := client.NewKeysAPI(eb.client)
+	options := &client.GetOptions{
+		Recursive: true,
+		Sort:      false,
+	}
+	resp, err := kAPI.Get(context.Background(), etcdPath, options)
 	if err != nil {
 		return nil, maskAny(err)
 	}
@@ -166,9 +180,12 @@ type userRecord struct {
 // Load all registered front-ends
 func (eb *etcdBackend) readFrontEndsTree() ([]frontendRecord, error) {
 	etcdPath := path.Join(eb.prefix, frontEndPrefix)
-	sort := false
-	recursive := false
-	resp, err := eb.client.Get(etcdPath, sort, recursive)
+	kAPI := client.NewKeysAPI(eb.client)
+	options := &client.GetOptions{
+		Recursive: false,
+		Sort:      false,
+	}
+	resp, err := kAPI.Get(context.Background(), etcdPath, options)
 	if err != nil {
 		return nil, maskAny(err)
 	}

@@ -18,33 +18,27 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/coreos/etcd/client"
 	"github.com/juju/errgo"
-
-	"github.com/coreos/go-etcd/etcd"
+	"golang.org/x/net/context"
 )
 
 const (
 	locksPrefix = "locks"
-
-	// https://github.com/coreos/go-etcd/issues/130
-	// https://github.com/coreos/etcd/blob/master/error/error.go
-	etcdErrCodeKeyAlreadyExists = 105
-	etcdErrCodeKeyTestFailed    = 101
-	etcdErrCodeKeyNotFound      = 100
 )
 
 // isEtcdWithCode returns true if the given error is
-// and EtcdError with given error code.
+// and ETCD Error with given error code.
 func isEtcdWithCode(err error, errCode int) bool {
-	if e, ok := err.(*etcd.EtcdError); ok {
-		return e.ErrorCode == errCode
+	if e, ok := err.(*client.Error); ok {
+		return e.Code == errCode
 	}
 	return false
 }
 
 // NewEtcdLockService returns a lock service implementation
-// based on etcd.
-func NewEtcdLockService(etcdClient *etcd.Client, prefix string) LockService {
+// based on ETCD.
+func NewEtcdLockService(etcdClient client.Client, prefix string) LockService {
 	return &etcdLockService{
 		etcdClient: etcdClient,
 		prefix:     prefix,
@@ -52,7 +46,7 @@ func NewEtcdLockService(etcdClient *etcd.Client, prefix string) LockService {
 }
 
 type etcdLockService struct {
-	etcdClient *etcd.Client
+	etcdClient client.Client
 	prefix     string
 }
 
@@ -66,17 +60,26 @@ type localLock struct {
 // name is the name of the new lock. This name is accessible globally in the cluster
 // ownerID is an identifier of the owner of the lock. This value must be unique within the cluster
 // lockTTL is the numer of seconds before the lock will automatically be released
-func (ls *etcdLockService) NewLock(name, ownerID string, lockTTL uint64) (*Lock, error) {
-	return newLock(name, ownerID, lockTTL, ls)
+func (ls *etcdLockService) NewLock(name, ownerID string, lockTTL time.Duration) (*Lock, error) {
+	l, err := newLock(name, ownerID, lockTTL, ls)
+	if err != nil {
+		return nil, maskAny(err)
+	}
+	return l, nil
 }
 
 // Claim tries to claim a lock with given name and assign it to the given owner.
 // If successful, it returns nil, otherwise it returns an error.
-func (ls *etcdLockService) Claim(name, ownerID string, lockTTL uint64) error {
-	_, err := ls.etcdClient.Create(ls.key(name), ownerID, lockTTL)
+func (ls *etcdLockService) Claim(name, ownerID string, lockTTL time.Duration) error {
+	kAPI := client.NewKeysAPI(ls.etcdClient)
+	options := &client.SetOptions{
+		PrevExist: client.PrevNoExist,
+		TTL:       lockTTL,
+	}
+	_, err := kAPI.Set(context.Background(), ls.key(name), ownerID, options)
 	if err != nil {
-		if isEtcdWithCode(err, etcdErrCodeKeyAlreadyExists) {
-			return errgo.WithCausef(nil, AlreadyLockedError, name)
+		if isEtcdWithCode(err, client.ErrorCodeNodeExist) {
+			return maskAny(errgo.WithCausef(nil, AlreadyLockedError, name))
 		}
 		return maskAny(err)
 	}
@@ -86,16 +89,22 @@ func (ls *etcdLockService) Claim(name, ownerID string, lockTTL uint64) error {
 
 // Update tries to update a lock with given name to the given ownerID.
 // This must be called often enough to avoid TTL expiration.
-func (ls *etcdLockService) Update(name, ownerID string, lockTTL uint64) error {
-	_, err := ls.etcdClient.CompareAndSwap(ls.key(name), ownerID, lockTTL, ownerID, 0)
+func (ls *etcdLockService) Update(name, ownerID string, lockTTL time.Duration) error {
+	kAPI := client.NewKeysAPI(ls.etcdClient)
+	options := &client.SetOptions{
+		PrevValue: ownerID,
+		PrevExist: client.PrevExist,
+		TTL:       lockTTL,
+	}
+	_, err := kAPI.Set(context.Background(), ls.key(name), ownerID, options)
 	if err != nil {
-		if isEtcdWithCode(err, etcdErrCodeKeyTestFailed) {
+		if isEtcdWithCode(err, client.ErrorCodeTestFailed) {
 			// Lock did not have ownerID as previous value
-			return errgo.WithCausef(nil, NotOwnerError, name)
+			return maskAny(errgo.WithCausef(nil, NotOwnerError, name))
 		}
-		if isEtcdWithCode(err, etcdErrCodeKeyNotFound) {
+		if isEtcdWithCode(err, client.ErrorCodeKeyNotFound) {
 			// Lock did not exists
-			return errgo.WithCausef(nil, NotLockedError, name)
+			return maskAny(errgo.WithCausef(nil, NotLockedError, name))
 		}
 		return maskAny(err)
 	}
@@ -105,13 +114,17 @@ func (ls *etcdLockService) Update(name, ownerID string, lockTTL uint64) error {
 
 // Release releases the lock with given name from the given ownerID.
 func (ls *etcdLockService) Release(name, ownerID string) error {
-	_, err := ls.etcdClient.CompareAndDelete(ls.key(name), ownerID, 0)
+	kAPI := client.NewKeysAPI(ls.etcdClient)
+	options := &client.DeleteOptions{
+		PrevValue: ownerID,
+	}
+	_, err := kAPI.Delete(context.Background(), ls.key(name), options)
 	if err != nil {
-		if isEtcdWithCode(err, etcdErrCodeKeyTestFailed) {
+		if isEtcdWithCode(err, client.ErrorCodeTestFailed) {
 			// Lock did not have ownerID as previous value
 			return errgo.WithCausef(nil, NotOwnerError, name)
 		}
-		if isEtcdWithCode(err, etcdErrCodeKeyNotFound) {
+		if isEtcdWithCode(err, client.ErrorCodeKeyNotFound) {
 			// Lock did not exists
 			return errgo.WithCausef(nil, NotLockedError, name)
 		}

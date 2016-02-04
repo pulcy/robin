@@ -22,9 +22,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/coreos/etcd/client"
 	"github.com/op/go-logging"
 	"github.com/xenolf/lego/acme"
+	"golang.org/x/net/context"
 )
 
 type HttpProviderConfig struct {
@@ -34,7 +35,7 @@ type HttpProviderConfig struct {
 
 type HttpProviderDependencies struct {
 	Logger     *logging.Logger
-	EtcdClient *etcd.Client
+	EtcdClient client.Client
 }
 
 type httpChallengeProvider struct {
@@ -52,7 +53,11 @@ func newHttpChallengeProvider(config HttpProviderConfig, deps HttpProviderDepend
 // Present makes the token available at `HTTP01ChallengePath(token)`
 func (s *httpChallengeProvider) Present(domain, token, keyAuth string) error {
 	// Write token & keyAuth in ETCD
-	if _, err := s.EtcdClient.Set(s.etcdTokenKey(token), keyAuth, 0); err != nil {
+	kAPI := client.NewKeysAPI(s.EtcdClient)
+	options := &client.SetOptions{
+		TTL: 0,
+	}
+	if _, err := kAPI.Set(context.Background(), s.etcdTokenKey(token), keyAuth, options); err != nil {
 		return maskAny(err)
 	}
 	return nil
@@ -60,7 +65,11 @@ func (s *httpChallengeProvider) Present(domain, token, keyAuth string) error {
 
 func (s *httpChallengeProvider) CleanUp(domain, token, keyAuth string) error {
 	// Remove token from etcdTokenKey
-	if _, err := s.EtcdClient.Delete(s.etcdTokenKey(token), false); err != nil {
+	kAPI := client.NewKeysAPI(s.EtcdClient)
+	options := &client.DeleteOptions{
+		Recursive: false,
+	}
+	if _, err := kAPI.Delete(context.Background(), s.etcdTokenKey(token), options); err != nil {
 		return maskAny(err)
 	}
 	return nil
@@ -75,7 +84,12 @@ func (s *httpChallengeProvider) Start() error {
 		path := req.URL.Path
 		if strings.HasPrefix(path, pathPrefix) && req.Method == "GET" {
 			token := path[len(pathPrefix):]
-			r, err := s.EtcdClient.Get(s.etcdTokenKey(token), false, false)
+			kAPI := client.NewKeysAPI(s.EtcdClient)
+			options := &client.GetOptions{
+				Recursive: false,
+				Sort:      false,
+			}
+			r, err := kAPI.Get(context.Background(), s.etcdTokenKey(token), options)
 			if err != nil {
 				s.Logger.Error("Failed to get keyAuth for token '%s'", token)
 				// TODO

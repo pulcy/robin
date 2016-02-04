@@ -48,7 +48,7 @@ $(GOBUILDDIR):
 update-vendor:
 	@rm -Rf $(VENDORDIR)
 	@pulcy go vendor -V $(VENDORDIR) \
-		github.com/coreos/go-etcd/etcd \
+		github.com/coreos/etcd/client \
 		github.com/dchest/uniuri \
 		github.com/giantswarm/retry-go \
 		github.com/juju/errgo \

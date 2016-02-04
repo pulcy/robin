@@ -18,33 +18,40 @@ import (
 	"encoding/base64"
 	"path"
 
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/coreos/etcd/client"
+	"golang.org/x/net/context"
 )
 
 const (
 	etcdCertificatesFolder = "certificates"
-	etcdErrCodeKeyNotFound = 100
 )
 
-func NewEtcdCertificatesRepository(etcdPrefix string, etcdClient *etcd.Client) CertificatesRepository {
+func NewEtcdCertificatesRepository(etcdPrefix string, etcdClient client.Client) CertificatesRepository {
+	kAPI := client.NewKeysAPI(etcdClient)
+	options := &client.WatcherOptions{
+		Recursive: true,
+	}
+	prefix := path.Join(etcdPrefix, etcdCertificatesFolder)
+	watcher := kAPI.Watcher(prefix, options)
 	return &etcdCertificatesRepository{
-		EtcdPrefix: etcdPrefix,
-		EtcdClient: etcdClient,
+		EtcdPrefix:                etcdPrefix,
+		EtcdClient:                etcdClient,
+		domainCertificatesWatcher: watcher,
 	}
 }
 
 type etcdCertificatesRepository struct {
 	EtcdPrefix string
-	EtcdClient *etcd.Client
+	EtcdClient client.Client
 
-	domainCertificatesWaitIndex uint64
+	domainCertificatesWatcher client.Watcher
 }
 
 // isEtcdWithCode returns true if the given error is
 // and EtcdError with given error code.
 func isEtcdWithCode(err error, errCode int) bool {
-	if e, ok := err.(*etcd.EtcdError); ok {
-		return e.ErrorCode == errCode
+	if e, ok := err.(*client.Error); ok {
+		return e.Code == errCode
 	}
 	return false
 }
@@ -52,22 +59,25 @@ func isEtcdWithCode(err error, errCode int) bool {
 // watchDomainCertificates waits for changes on one of the domain certificates
 // in the repository and returns where there is a change.
 func (s *etcdCertificatesRepository) WatchDomainCertificates() error {
-	prefix := path.Join(s.EtcdPrefix, etcdCertificatesFolder)
-	resp, err := s.EtcdClient.Watch(prefix, s.domainCertificatesWaitIndex, true, nil, nil)
+	_, err := s.domainCertificatesWatcher.Next(context.Background())
 	if err != nil {
 		return maskAny(err)
 	}
-	s.domainCertificatesWaitIndex = resp.EtcdIndex + 1
 	return nil
 }
 
 // loadDomainCertificate tries to load the certificate for the given domain from the ETCD repository
 // Returns nil,nil if domain is not found.
 func (s *etcdCertificatesRepository) LoadDomainCertificate(domain string) ([]byte, error) {
+	kAPI := client.NewKeysAPI(s.EtcdClient)
+	options := &client.GetOptions{
+		Recursive: false,
+		Sort:      false,
+	}
 	key := s.domainCertificateKey(domain)
-	resp, err := s.EtcdClient.Get(key, false, false)
+	resp, err := kAPI.Get(context.Background(), key, options)
 	if err != nil {
-		if isEtcdWithCode(err, etcdErrCodeKeyNotFound) {
+		if isEtcdWithCode(err, client.ErrorCodeKeyNotFound) {
 			return nil, nil
 		}
 		return nil, maskAny(err)
@@ -81,9 +91,13 @@ func (s *etcdCertificatesRepository) LoadDomainCertificate(domain string) ([]byt
 
 // storeDomainCertificate stores the certificate for the given domain in the ETCD repository
 func (s *etcdCertificatesRepository) StoreDomainCertificate(domain string, certificate []byte) error {
+	kAPI := client.NewKeysAPI(s.EtcdClient)
+	options := &client.SetOptions{
+		TTL: 0,
+	}
 	key := s.domainCertificateKey(domain)
 	value := base64.StdEncoding.EncodeToString(certificate)
-	if _, err := s.EtcdClient.Set(key, value, 0); err != nil {
+	if _, err := kAPI.Set(context.Background(), key, value, options); err != nil {
 		return maskAny(err)
 	}
 	return nil

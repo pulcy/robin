@@ -25,7 +25,7 @@ import (
 type Lock struct {
 	name     string        // Name of the object to lock
 	ownerID  string        // Identifier of the owner of the lock
-	lockTTL  uint64        // Number of seconds before the lock will expire automatically
+	lockTTL  time.Duration // Timespan before the lock will expire automatically
 	used     bool          // Set to true once it has been claim, cannot be reclaimed afterwards
 	locked   bool          // Is this lock currently locked?
 	mutex    sync.Mutex    // Used to protect local access to this locks values
@@ -34,7 +34,7 @@ type Lock struct {
 }
 
 // newLock creates and initializes a new Lock.
-func newLock(name, ownerID string, lockTTL uint64, service lockService) (*Lock, error) {
+func newLock(name, ownerID string, lockTTL time.Duration, service lockService) (*Lock, error) {
 	if name == "" {
 		return nil, errgo.WithCausef(nil, InvalidArgumentError, "name empty")
 	}
