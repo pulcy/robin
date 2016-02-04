@@ -1,8 +1,21 @@
+// Copyright (c) 2016 Pulcy.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package locks
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/juju/errgo"
@@ -33,18 +46,14 @@ func isEtcdWithCode(err error, errCode int) bool {
 // based on etcd.
 func NewEtcdLockService(etcdClient *etcd.Client, prefix string) LockService {
 	return &etcdLockService{
-		EtcdClient: etcdClient,
+		etcdClient: etcdClient,
 		prefix:     prefix,
-		cache:      make(map[string]localLock),
 	}
 }
 
 type etcdLockService struct {
-	EtcdClient *etcd.Client
+	etcdClient *etcd.Client
 	prefix     string
-
-	cache      map[string]localLock
-	cacheMutex sync.Mutex
 }
 
 type localLock struct {
@@ -64,12 +73,7 @@ func (ls *etcdLockService) NewLock(name, ownerID string, lockTTL uint64) (*Lock,
 // Claim tries to claim a lock with given name and assign it to the given owner.
 // If successful, it returns nil, otherwise it returns an error.
 func (ls *etcdLockService) Claim(name, ownerID string, lockTTL uint64) error {
-	if ls.isLockedInCache(name) {
-		// It is already locked by someone inside this process
-		return errgo.WithCausef(nil, AlreadyLockedError, name)
-	}
-
-	_, err := ls.EtcdClient.Create(ls.key(name), ownerID, lockTTL)
+	_, err := ls.etcdClient.Create(ls.key(name), ownerID, lockTTL)
 	if err != nil {
 		if isEtcdWithCode(err, etcdErrCodeKeyAlreadyExists) {
 			return errgo.WithCausef(nil, AlreadyLockedError, name)
@@ -77,16 +81,13 @@ func (ls *etcdLockService) Claim(name, ownerID string, lockTTL uint64) error {
 		return maskAny(err)
 	}
 
-	// Update local cache
-	ls.setLocalCache(name, ownerID, lockTTL)
-
 	return nil
 }
 
 // Update tries to update a lock with given name to the given ownerID.
 // This must be called often enough to avoid TTL expiration.
 func (ls *etcdLockService) Update(name, ownerID string, lockTTL uint64) error {
-	_, err := ls.EtcdClient.CompareAndSwap(ls.key(name), ownerID, lockTTL, ownerID, 0)
+	_, err := ls.etcdClient.CompareAndSwap(ls.key(name), ownerID, lockTTL, ownerID, 0)
 	if err != nil {
 		if isEtcdWithCode(err, etcdErrCodeKeyTestFailed) {
 			// Lock did not have ownerID as previous value
@@ -99,18 +100,12 @@ func (ls *etcdLockService) Update(name, ownerID string, lockTTL uint64) error {
 		return maskAny(err)
 	}
 
-	// Update local cache
-	ls.setLocalCache(name, ownerID, lockTTL)
-
 	return nil
 }
 
 // Release releases the lock with given name from the given ownerID.
 func (ls *etcdLockService) Release(name, ownerID string) error {
-	// Update local cache
-	ls.removeFromLocalCache(name, ownerID)
-
-	_, err := ls.EtcdClient.CompareAndDelete(ls.key(name), ownerID, 0)
+	_, err := ls.etcdClient.CompareAndDelete(ls.key(name), ownerID, 0)
 	if err != nil {
 		if isEtcdWithCode(err, etcdErrCodeKeyTestFailed) {
 			// Lock did not have ownerID as previous value
@@ -127,45 +122,4 @@ func (ls *etcdLockService) Release(name, ownerID string) error {
 
 func (ls *etcdLockService) key(name string) string {
 	return fmt.Sprintf("%s/%s/%s", ls.prefix, locksPrefix, name)
-}
-
-func (ls *etcdLockService) isLockedInCache(name string) bool {
-	ls.cacheMutex.Lock()
-	defer ls.cacheMutex.Unlock()
-
-	lock, found := ls.cache[name]
-	if !found {
-		return false
-	}
-	now := time.Now()
-	if now.After(lock.Expires) {
-		// Lock is expired
-		delete(ls.cache, name)
-		return false
-	}
-
-	return true
-}
-
-func (ls *etcdLockService) setLocalCache(name, ownerID string, lockTTL uint64) {
-	ls.cacheMutex.Lock()
-	defer ls.cacheMutex.Unlock()
-
-	ls.cache[name] = localLock{
-		OwnerID: ownerID,
-		Expires: time.Now().Add(time.Duration(lockTTL) * time.Second),
-	}
-}
-
-func (ls *etcdLockService) removeFromLocalCache(name, ownerID string) {
-	ls.cacheMutex.Lock()
-	defer ls.cacheMutex.Unlock()
-
-	if lock, ok := ls.cache[name]; ok {
-		// Already locked, good
-		if lock.OwnerID == ownerID {
-			// Remove lock
-			delete(ls.cache, name)
-		}
-	}
 }
