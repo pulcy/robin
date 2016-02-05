@@ -154,7 +154,7 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	// Create config for private TCP services
 	if s.PrivateTcpSslCert != "" {
 		privateTcpFrontEndSection := c.Section("frontend tcp-in-private")
-		privateTcpSsl := fmt.Sprintf("ssl generate-certificates ca-sign-file %s crt %s no-sslv3",
+		privateTcpSsl := fmt.Sprintf("ssl crt %s generate-certificates ca-sign-file %s no-sslv3",
 			filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
 			filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
 		)

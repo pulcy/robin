@@ -47,7 +47,7 @@ func (sr ServiceRegistration) FullString() string {
 }
 
 func (sr ServiceRegistration) IsHttp() bool {
-	return sr.Mode == "http"
+	return sr.Mode == "http" || sr.Mode == ""
 }
 
 func (sr ServiceRegistration) IsTcp() bool {
