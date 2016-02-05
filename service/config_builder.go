@@ -31,7 +31,7 @@ var (
 		"ssl-default-bind-ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128:AES256:AES:CAMELLIA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA",
 	}
 	defaultsOptions = []string{
-		"mode http",
+		"mode tcp",
 		"timeout connect 5000ms",
 		"timeout client 50000ms",
 		"timeout server 50000ms",
@@ -75,6 +75,7 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 			statsSsl = fmt.Sprintf("ssl crt %s no-sslv3", filepath.Join(s.SslCertsFolder, s.StatsSslCert))
 		}
 		statsSection.Add(
+			"mode http",
 			fmt.Sprintf("bind *:%d %s", s.StatsPort, statsSsl),
 			"stats enable",
 			"stats uri /",
@@ -126,6 +127,7 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		publicFrontEndSection.Add("redirect scheme https if !{ ssl_fc }")
 	}
 	publicFrontEndSection.Add(
+		"mode http",
 		"reqadd X-Forwarded-Port:\\ %[dst_port]",
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
@@ -141,6 +143,7 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	privateFrontEndSection := c.Section("frontend http-in-private")
 	privateFrontEndSection.Add("bind *:81")
 	privateFrontEndSection.Add(
+		"mode http",
 		"reqadd X-Forwarded-Port:\\ %[dst_port]",
 		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
 		"default_backend fallback",
@@ -154,7 +157,7 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	// Create config for private TCP services
 	if s.PrivateTcpSslCert != "" {
 		privateTcpFrontEndSection := c.Section("frontend tcp-in-private")
-		privateTcpSsl := fmt.Sprintf("ssl crt %s generate-certificates ca-sign-file %s no-sslv3",
+		privateTcpSsl := fmt.Sprintf("ssl generate-certificates ca-sign-file %s crt %s no-sslv3",
 			filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
 			filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
 		)
@@ -222,10 +225,10 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 }
 
 // createAclRules create `acl` rules for the given selector
-func createAclRules(sel backend.ServiceSelector) []string {
+func createAclRules(sel backend.ServiceSelector, isTcp bool) []string {
 	result := []string{}
 	if sel.Domain != "" {
-		if sel.IsSecure() {
+		if sel.IsSecure() || isTcp {
 			result = append(result, fmt.Sprintf("ssl_fc_sni -i %s", sel.Domain))
 		} else {
 			result = append(result, fmt.Sprintf("hdr_dom(host) -i %s", sel.Domain))
@@ -258,7 +261,7 @@ func createAcls(section *haproxy.Section, services backend.ServiceRegistrations,
 
 	useBlocks := []useBlock{}
 	for _, pair := range pairs {
-		rules := createAclRules(pair.Selector)
+		rules := createAclRules(pair.Selector, pair.Service.IsTcp())
 
 		authAclName := ""
 		if len(pair.Selector.Users) > 0 {
