@@ -40,11 +40,16 @@ VOLUME ["/data"]
 VOLUME ["/dev/log"]
 
 # Export ports
-EXPOSE 80   # Public HTTP
-EXPOSE 81   # Private HTTP
-EXPOSE 82   # Private TCP+SSL
-EXPOSE 443  # Public HTTPS
-EXPOSE 7088 # Stats HTTPS
+# 80:   Public HTTP
+# 81:   Private HTTP
+# 82:   Private TCP+SSL
+# 443:  Public HTTPS
+# 7088: Stats HTTPS
+EXPOSE 80
+EXPOSE 81
+EXPOSE 82
+EXPOSE 443
+EXPOSE 7088
 
 # Start load-balancer
 ENTRYPOINT ["/app/load-balancer"]
