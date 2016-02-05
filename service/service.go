@@ -38,16 +38,17 @@ const (
 )
 
 type ServiceConfig struct {
-	HaproxyConfPath string
-	HaproxyPath     string
-	HaproxyPidPath  string
-	StatsPort       int
-	StatsUser       string
-	StatsPassword   string
-	StatsSslCert    string
-	SslCertsFolder  string
-	ForceSsl        bool
-	PrivateHost     string
+	HaproxyConfPath   string
+	HaproxyPath       string
+	HaproxyPidPath    string
+	StatsPort         int
+	StatsUser         string
+	StatsPassword     string
+	StatsSslCert      string
+	SslCertsFolder    string
+	ForceSsl          bool
+	PrivateHost       string
+	PrivateTcpSslCert string // Name of SSL certificate used for private tcp connections
 }
 
 type ServiceDependencies struct {

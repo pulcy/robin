@@ -34,6 +34,7 @@ type ServiceRegistration struct {
 	Instances     ServiceInstances // List instances of the service (can not be empty)
 	Selectors     ServiceSelectors // List of selectors to match traffic to this service
 	HttpCheckPath string           // Path (on the service) used for health checks (can be empty)
+	Mode          string           // http|tcp
 }
 
 func (sr ServiceRegistration) FullString() string {
@@ -43,6 +44,14 @@ func (sr ServiceRegistration) FullString() string {
 		sr.Instances.FullString(),
 		sr.Selectors.FullString(),
 		sr.HttpCheckPath)
+}
+
+func (sr ServiceRegistration) IsHttp() bool {
+	return sr.Mode == "http"
+}
+
+func (sr ServiceRegistration) IsTcp() bool {
+	return sr.Mode == "tcp"
 }
 
 type ServiceRegistrations []ServiceRegistration

@@ -42,15 +42,16 @@ var (
 	}
 
 	runArgs struct {
-		etcdAddr        string
-		haproxyConfPath string
-		statsPort       int
-		statsUser       string
-		statsPassword   string
-		statsSslCert    string
-		sslCertsFolder  string
-		forceSsl        bool
-		privateHost     string
+		etcdAddr          string
+		haproxyConfPath   string
+		statsPort         int
+		statsUser         string
+		statsPassword     string
+		statsSslCert      string
+		sslCertsFolder    string
+		forceSsl          bool
+		privateHost       string
+		privateTcpSslCert string
 
 		// acme
 		acmeHttpPort       int
@@ -76,10 +77,11 @@ func init() {
 	cmdRun.Flags().IntVar(&runArgs.statsPort, "stats-port", defaultStatsPort, "Port for stats page")
 	cmdRun.Flags().StringVar(&runArgs.statsUser, "stats-user", defaultStatsUser, "User for stats page")
 	cmdRun.Flags().StringVar(&runArgs.statsPassword, "stats-password", defaultStatsPassword, "Password for stats page")
-	cmdRun.Flags().StringVar(&runArgs.statsSslCert, "stats-ssl-cert", defaultStatsSslCert, "Filename of SSL certificate for stats page (located in ss-certs)")
+	cmdRun.Flags().StringVar(&runArgs.statsSslCert, "stats-ssl-cert", defaultStatsSslCert, "Filename of SSL certificate for stats page (located in ssl-certs)")
 	cmdRun.Flags().StringVar(&runArgs.sslCertsFolder, "ssl-certs", defaultSslCertsFolder, "Folder containing SSL certificate")
 	cmdRun.Flags().BoolVar(&runArgs.forceSsl, "force-ssl", defaultForceSsl, "Redirect HTTP to HTTPS")
 	cmdRun.Flags().StringVar(&runArgs.privateHost, "private-host", defaultPrivateHost, "IP address of private network")
+	cmdRun.Flags().StringVar(&runArgs.privateTcpSslCert, "private-ssl-cert", defaultPrivateTcpSslCert, "Filename of SSL certificate for private TCP connections (located in ssl-certs)")
 	// acme
 	cmdRun.Flags().IntVar(&runArgs.acmeHttpPort, "acme-http-port", defaultAcmeHttpPort, "Port to listen for ACME HTTP challenges on (internally)")
 	cmdRun.Flags().StringVar(&runArgs.acmeEmail, "acme-email", defaultAcmeEmail, "Email account for ACME server")
@@ -157,14 +159,15 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		Exitf("Please specify --private-host")
 	}
 	service := service.NewService(service.ServiceConfig{
-		HaproxyConfPath: runArgs.haproxyConfPath,
-		StatsPort:       runArgs.statsPort,
-		StatsUser:       runArgs.statsUser,
-		StatsPassword:   runArgs.statsPassword,
-		StatsSslCert:    runArgs.statsSslCert,
-		SslCertsFolder:  runArgs.sslCertsFolder,
-		ForceSsl:        runArgs.forceSsl,
-		PrivateHost:     runArgs.privateHost,
+		HaproxyConfPath:   runArgs.haproxyConfPath,
+		StatsPort:         runArgs.statsPort,
+		StatsUser:         runArgs.statsUser,
+		StatsPassword:     runArgs.statsPassword,
+		StatsSslCert:      runArgs.statsSslCert,
+		SslCertsFolder:    runArgs.sslCertsFolder,
+		ForceSsl:          runArgs.forceSsl,
+		PrivateHost:       runArgs.privateHost,
+		PrivateTcpSslCert: runArgs.privateTcpSslCert,
 	}, service.ServiceDependencies{
 		Logger:      log,
 		Backend:     backend,

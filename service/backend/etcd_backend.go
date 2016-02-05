@@ -159,6 +159,7 @@ func (eb *etcdBackend) parseServiceInstance(s string) (ServiceInstance, error) {
 type frontendRecord struct {
 	Selectors     []frontendSelectorRecord `json:"selectors"`
 	Service       string                   `json:"service,omitempty"`
+	Mode          string                   `json:"mode,omitempty"` // http|tcp
 	HttpCheckPath string                   `json:"http-check-path,omitempty"`
 }
 
@@ -217,6 +218,9 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 			if fr.HttpCheckPath != "" && service.HttpCheckPath == "" {
 				service.HttpCheckPath = fr.HttpCheckPath
 			}
+			if fr.Mode != "" && service.Mode == "" {
+				service.Mode = fr.Mode
+			}
 			for _, sel := range fr.Selectors {
 				if sel.Port != 0 && sel.Port != service.ServicePort {
 					continue
@@ -240,6 +244,9 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 			}
 		}
 		if len(service.Selectors) > 0 {
+			if service.Mode == "" {
+				service.Mode = "http"
+			}
 			result = append(result, service)
 		}
 	}

@@ -56,6 +56,11 @@ type useBlock struct {
 	Service     backend.ServiceRegistration
 }
 
+type selection struct {
+	Private bool
+	Http    bool
+}
+
 // renderConfig creates a new haproxy configuration content.
 func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, error) {
 	c := haproxy.NewConfig()
@@ -127,11 +132,12 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	)
 	aclNameGen := NewNameGenerator("acl")
 	// Create acls
-	useBlocks := createAcls(publicFrontEndSection, services, false, aclNameGen)
+	publicFrontEndSelection := selection{Private: false, Http: true}
+	useBlocks := createAcls(publicFrontEndSection, services, publicFrontEndSelection, aclNameGen)
 	// Create link to backend
-	createUseBackends(publicFrontEndSection, useBlocks, false)
+	createUseBackends(publicFrontEndSection, useBlocks, publicFrontEndSelection)
 
-	// Create config for private services
+	// Create config for private HTTP services
 	privateFrontEndSection := c.Section("frontend http-in-private")
 	privateFrontEndSection.Add("bind *:81")
 	privateFrontEndSection.Add(
@@ -140,9 +146,29 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		"default_backend fallback",
 	)
 	// Create acls
-	useBlocks = createAcls(privateFrontEndSection, services, true, aclNameGen)
+	privateFrontEndSelection := selection{Private: true, Http: true}
+	useBlocks = createAcls(privateFrontEndSection, services, privateFrontEndSelection, aclNameGen)
 	// Create link to backend
-	createUseBackends(privateFrontEndSection, useBlocks, true)
+	createUseBackends(privateFrontEndSection, useBlocks, privateFrontEndSelection)
+
+	// Create config for private TCP services
+	if s.PrivateTcpSslCert != "" {
+		privateTcpFrontEndSection := c.Section("frontend tcp-in-private")
+		privateTcpSsl := fmt.Sprintf("ssl generate-certificates ca-sign-file %s crt %s no-sslv3",
+			filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
+			filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
+		)
+		privateTcpFrontEndSection.Add("bind *:82 " + privateTcpSsl)
+		privateTcpFrontEndSection.Add(
+			"mode tcp",
+			"default_backend fallback",
+		)
+		// Create acls
+		privateTcpFrontEndSelection := selection{Private: true, Http: false}
+		useBlocks = createAcls(privateTcpFrontEndSection, services, privateTcpFrontEndSelection, aclNameGen)
+		// Create link to backend
+		createUseBackends(privateTcpFrontEndSection, useBlocks, privateTcpFrontEndSelection)
+	}
 
 	// Create backends
 	for _, sr := range services {
@@ -157,11 +183,17 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 				}
 			}
 			// Create backend
-			backendSection := c.Section(fmt.Sprintf("backend %s", backendName(sr, private)))
+			backendSection := c.Section(fmt.Sprintf("backend %s", backendName(sr, selection{Private: private, Http: sr.IsHttp()})))
 			backendSection.Add(
-				"mode http",
 				"balance roundrobin",
 			)
+			if sr.IsHttp() {
+				backendSection.Add("mode http")
+			} else if sr.IsTcp() {
+				backendSection.Add("mode tcp")
+			} else {
+				return "", maskAny(fmt.Errorf("Unknown service mode '%s'", sr.Mode))
+			}
 			if sr.HttpCheckPath != "" {
 				backendSection.Add(fmt.Sprintf("option httpchk GET %s", sr.HttpCheckPath))
 			}
@@ -207,16 +239,18 @@ func createAclRules(sel backend.ServiceSelector) []string {
 
 // creteAcls create `acl` rules for the given services and adds them
 // to the given section
-func createAcls(section *haproxy.Section, services backend.ServiceRegistrations, private bool, ng *nameGenerator) []useBlock {
+func createAcls(section *haproxy.Section, services backend.ServiceRegistrations, selection selection, ng *nameGenerator) []useBlock {
 	pairs := selectorServicePairs{}
 	for _, sr := range services {
-		for selIndex, sel := range sr.Selectors {
-			if sel.Private == private {
-				pairs = append(pairs, selectorServicePair{
-					Selector:      sel,
-					SelectorIndex: selIndex,
-					Service:       sr,
-				})
+		if sr.IsHttp() == selection.Http {
+			for selIndex, sel := range sr.Selectors {
+				if sel.Private == selection.Private {
+					pairs = append(pairs, selectorServicePair{
+						Selector:      sel,
+						SelectorIndex: selIndex,
+						Service:       sr,
+					})
+				}
 			}
 		}
 	}
@@ -252,7 +286,7 @@ func createAcls(section *haproxy.Section, services backend.ServiceRegistrations,
 
 // createUseBackends creates a `use_backend` rules for the given input
 // and adds it to the given section
-func createUseBackends(section *haproxy.Section, useBlocks []useBlock, private bool) {
+func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection selection) {
 	for _, useBlock := range useBlocks {
 		if len(useBlock.AclNames) == 0 {
 			continue
@@ -262,14 +296,14 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, private b
 			section.Add(fmt.Sprintf("http-request allow if %s %s", acls, useBlock.AuthAclName))
 			section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
 		}
-		section.Add(fmt.Sprintf("use_backend %s if %s", backendName(useBlock.Service, private), acls))
+		section.Add(fmt.Sprintf("use_backend %s if %s", backendName(useBlock.Service, selection), acls))
 	}
 }
 
 // backendName creates a valid name for the backend of this registration
 // in haproxy.
-func backendName(sr backend.ServiceRegistration, private bool) string {
-	return fmt.Sprintf("backend_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, visibilityPostfix(private))
+func backendName(sr backend.ServiceRegistration, selection selection) string {
+	return fmt.Sprintf("backend_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, visibilityPostfix(selection))
 }
 
 // userListName creates a valid name for the userlist of this registration
@@ -283,9 +317,13 @@ func cleanName(s string) string {
 	return s // TODO
 }
 
-func visibilityPostfix(private bool) string {
-	if private {
-		return "private"
+func visibilityPostfix(selection selection) string {
+	if selection.Private {
+		if selection.Http {
+			return "private"
+		} else {
+			return "private-tcp"
+		}
 	}
 	return "public"
 }

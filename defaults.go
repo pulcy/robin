@@ -19,11 +19,12 @@ import (
 )
 
 const (
-	defaultStatsPort      = 7088
-	defaultStatsSslCert   = ""
-	defaultSslCertsFolder = "/certs/"
-	defaultForceSsl       = false
-	defaultPrivateHost    = ""
+	defaultStatsPort         = 7088
+	defaultStatsSslCert      = ""
+	defaultSslCertsFolder    = "/certs/"
+	defaultForceSsl          = false
+	defaultPrivateHost       = ""
+	defaultPrivateTcpSslCert = ""
 )
 
 const (
