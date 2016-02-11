@@ -20,8 +20,8 @@ import (
 	"sort"
 	"strings"
 
-	"git.pulcy.com/pulcy/load-balancer/haproxy"
-	"git.pulcy.com/pulcy/load-balancer/service/backend"
+	"github.com/pulcy/load-balancer/haproxy"
+	"github.com/pulcy/load-balancer/service/backend"
 )
 
 var (

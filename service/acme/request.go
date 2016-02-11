@@ -21,7 +21,7 @@ import (
 	"github.com/op/go-logging"
 	"github.com/xenolf/lego/acme"
 
-	"git.pulcy.com/pulcy/load-balancer/service/mutex"
+	"github.com/pulcy/load-balancer/service/mutex"
 )
 
 const (

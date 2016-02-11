@@ -27,8 +27,8 @@ import (
 
 	"github.com/op/go-logging"
 
-	"git.pulcy.com/pulcy/load-balancer/service/acme"
-	"git.pulcy.com/pulcy/load-balancer/service/backend"
+	"github.com/pulcy/load-balancer/service/acme"
+	"github.com/pulcy/load-balancer/service/backend"
 )
 
 const (

@@ -19,7 +19,7 @@ import (
 
 	"github.com/xenolf/lego/acme"
 
-	"git.pulcy.com/pulcy/load-balancer/service/backend"
+	"github.com/pulcy/load-balancer/service/backend"
 )
 
 const (
