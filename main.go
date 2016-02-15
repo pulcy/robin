@@ -30,7 +30,7 @@ var (
 
 var (
 	cmdMain = &cobra.Command{
-		Use:   "load-balancer",
+		Use:   "bleep",
 		Short: "Distribute incoming requests onto configurable backends",
 		Long:  "Distribute incoming requests onto configurable backends",
 		Run:   UsageFunc,

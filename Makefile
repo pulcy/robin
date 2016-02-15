@@ -1,4 +1,4 @@
-PROJECT := load-balancer
+PROJECT := bleep
 SCRIPTDIR := $(shell pwd)
 ROOTDIR := $(shell cd $(SCRIPTDIR) && pwd)
 VERSION:= $(shell cat $(ROOTDIR)/VERSION)
