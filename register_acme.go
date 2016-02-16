@@ -17,7 +17,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/pulcy/bleep/service/acme"
+	"github.com/pulcy/robin/service/acme"
 )
 
 var (

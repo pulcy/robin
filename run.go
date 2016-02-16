@@ -22,10 +22,10 @@ import (
 	"github.com/coreos/etcd/client"
 	"github.com/spf13/cobra"
 
-	"github.com/pulcy/bleep/service"
-	"github.com/pulcy/bleep/service/acme"
-	"github.com/pulcy/bleep/service/backend"
-	"github.com/pulcy/bleep/service/mutex"
+	"github.com/pulcy/robin/service"
+	"github.com/pulcy/robin/service/acme"
+	"github.com/pulcy/robin/service/backend"
+	"github.com/pulcy/robin/service/mutex"
 )
 
 const (

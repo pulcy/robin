@@ -27,8 +27,8 @@ import (
 
 	"github.com/op/go-logging"
 
-	"github.com/pulcy/bleep/service/acme"
-	"github.com/pulcy/bleep/service/backend"
+	"github.com/pulcy/robin/service/acme"
+	"github.com/pulcy/robin/service/backend"
 )
 
 const (

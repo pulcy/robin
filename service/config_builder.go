@@ -20,8 +20,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pulcy/bleep/haproxy"
-	"github.com/pulcy/bleep/service/backend"
+	"github.com/pulcy/robin/haproxy"
+	"github.com/pulcy/robin/service/backend"
 )
 
 var (

@@ -33,7 +33,7 @@ RUN cat /app/errors/503.hdr /app/public_html/50x.html > /app/errors/503.http
 RUN cat /app/errors/504.hdr /app/public_html/50x.html > /app/errors/504.http
 
 # Added start process
-ADD ./bleep /app/
+ADD ./robin /app/
 
 # Configure volumns
 VOLUME ["/data"]
@@ -51,5 +51,5 @@ EXPOSE 82
 EXPOSE 443
 EXPOSE 7088
 
-# Start load-balancer
-ENTRYPOINT ["/app/bleep"]
+# Start the load-balancer
+ENTRYPOINT ["/app/robin"]
