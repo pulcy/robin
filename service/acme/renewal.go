@@ -71,7 +71,7 @@ func (rm *renewalMonitor) Start() {
 			domains := rm.getUsedDomains()
 			for _, domain := range domains {
 				if err := rm.renewCertificateIfNeeded(domain); err != nil {
-					rm.Logger.Error("Failed to renew certificate for '%s': %#v", err)
+					rm.Logger.Error("Failed to renew certificate for '%s': %#v", domain, err)
 				}
 			}
 

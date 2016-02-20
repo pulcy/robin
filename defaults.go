@@ -25,6 +25,7 @@ const (
 	defaultForceSsl          = false
 	defaultPrivateHost       = ""
 	defaultPrivateTcpSslCert = ""
+	defaultLogLevel          = "info"
 )
 
 const (

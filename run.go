@@ -20,6 +20,7 @@ import (
 	"path"
 
 	"github.com/coreos/etcd/client"
+	"github.com/op/go-logging"
 	"github.com/spf13/cobra"
 
 	"github.com/pulcy/robin/service"
@@ -42,6 +43,7 @@ var (
 	}
 
 	runArgs struct {
+		logLevel          string
 		etcdAddr          string
 		haproxyConfPath   string
 		statsPort         int
@@ -72,6 +74,7 @@ func init() {
 	defaultAcmeEmail := os.Getenv("ACME_EMAIL")
 	defaultStatsPassword := os.Getenv("STATS_PASSWORD")
 	defaultStatsUser := os.Getenv("STATS_USER")
+	cmdRun.Flags().StringVar(&runArgs.logLevel, "log-level", defaultLogLevel, "Log level (debug|info|warning|error)")
 	cmdRun.Flags().StringVar(&runArgs.etcdAddr, "etcd-addr", "", "Address of etcd backend")
 	cmdRun.Flags().StringVar(&runArgs.haproxyConfPath, "haproxy-conf", "/data/config/haproxy.cfg", "Path of haproxy config file")
 	cmdRun.Flags().IntVar(&runArgs.statsPort, "stats-port", defaultStatsPort, "Port for stats page")
@@ -111,6 +114,13 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	if err != nil {
 		Exitf("Failed to initialize ETCD client: %#v", err)
 	}
+
+	// Set log level
+	level, err := logging.LogLevel(runArgs.logLevel)
+	if err != nil {
+		Exitf("Invalid log-level '%s': %#v", runArgs.logLevel, err)
+	}
+	logging.SetLevel(level, cmdMain.Use)
 
 	// Prepare backend
 	backend, err := backend.NewEtcdBackend(log, etcdUrl)
