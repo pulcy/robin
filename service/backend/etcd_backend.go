@@ -106,7 +106,7 @@ func (eb *etcdBackend) readServicesTree() (ServiceRegistrations, error) {
 		return list, nil
 	}
 	for _, serviceNode := range resp.Node.Nodes {
-		name := path.Base(serviceNode.Key)
+		serviceName := path.Base(serviceNode.Key)
 		registrations := make(map[int]*ServiceRegistration)
 		for _, instanceNode := range serviceNode.Nodes {
 			uniqueID := path.Base(instanceNode.Key)
@@ -127,10 +127,18 @@ func (eb *etcdBackend) readServicesTree() (ServiceRegistrations, error) {
 			}
 			sr, ok := registrations[port]
 			if !ok {
-				sr = &ServiceRegistration{ServiceName: name, ServicePort: port}
+				sr = &ServiceRegistration{ServiceName: serviceName, ServicePort: port}
 				registrations[port] = sr
 			}
 			sr.Instances = append(sr.Instances, instance)
+
+			// Register instance as separate service
+			instanceName := parts[1]
+			if strings.HasPrefix(instanceName, serviceName+"-") {
+				sr := ServiceRegistration{ServiceName: instanceName, ServicePort: port}
+				sr.Instances = append(sr.Instances, instance)
+				list = append(list, sr)
+			}
 		}
 		for _, v := range registrations {
 			list = append(list, *v)
