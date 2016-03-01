@@ -206,7 +206,7 @@ func (eb *etcdBackend) readFrontEndsTree() ([]frontendRecord, error) {
 		rawJson := frontEndNode.Value
 		record := frontendRecord{}
 		if err := json.Unmarshal([]byte(rawJson), &record); err != nil {
-			eb.Logger.Error("Cannot unmarshal registration of %s", frontEndNode.Key)
+			eb.Logger.Errorf("Cannot unmarshal registration of %s", frontEndNode.Key)
 			continue
 		}
 		list = append(list, record)

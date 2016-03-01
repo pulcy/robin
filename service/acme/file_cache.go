@@ -53,7 +53,7 @@ func (s *certificatesFileCache) Clear() {
 	defer s.domainFileCacheMutex.Unlock()
 
 	s.domainFileCache = make(map[string]string)
-	s.Logger.Debug("Cleared domain file cache")
+	s.Logger.Debugf("Cleared domain file cache")
 }
 
 // getDomainCertificatePath returns the path of a certificate file for the given domain.

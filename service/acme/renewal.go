@@ -71,7 +71,7 @@ func (rm *renewalMonitor) Start() {
 			domains := rm.getUsedDomains()
 			for _, domain := range domains {
 				if err := rm.renewCertificateIfNeeded(domain); err != nil {
-					rm.Logger.Error("Failed to renew certificate for '%s': %#v", domain, err)
+					rm.Logger.Errorf("Failed to renew certificate for '%s': %#v", domain, err)
 				}
 			}
 
@@ -105,12 +105,12 @@ func (rm *renewalMonitor) renewCertificateIfNeeded(domain string) error {
 
 	if daysLeft > renewDaysBefore {
 		// No need to renew yet
-		rm.Logger.Debug("No need to renew certificate for '%s', it has %d days left", domain, daysLeft)
+		rm.Logger.Debugf("No need to renew certificate for '%s', it has %d days left", domain, daysLeft)
 		return nil
 	}
 
 	// We need to renew the certificate
-	rm.Logger.Debug("Certificate for '%s' is due for renewal, it has %d days left", daysLeft)
+	rm.Logger.Debugf("Certificate for '%s' is due for renewal, it has %d days left", daysLeft)
 
 	op := func() error {
 		return maskAny(rm.Requester.RequestCertificates([]string{domain}))

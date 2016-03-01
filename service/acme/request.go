@@ -64,7 +64,7 @@ func (s *certificateRequester) RequestCertificates(domains []string) error {
 		return maskAny(err)
 	}
 	if !isMaster {
-		s.Logger.Debug("requestCertificates ends because another instance is requesting certificates")
+		s.Logger.Debugf("requestCertificates ends because another instance is requesting certificates")
 		return maskAny(NotMasterError)
 	}
 
@@ -76,20 +76,20 @@ func (s *certificateRequester) RequestCertificates(domains []string) error {
 
 	failedDomains := []string{}
 	for _, domain := range domains {
-		s.Logger.Debug("Obtaining certificate for '%s'", domain)
+		s.Logger.Debugf("Obtaining certificate for '%s'", domain)
 		bundle := true
 		certificates, failures := s.acmeClient.ObtainCertificate([]string{domain}, bundle, nil)
 		if len(failures) > 0 {
 			failedDomains = append(failedDomains, domain)
-			s.Logger.Error("ObtainCertificate for '%s' failed: %#v", domain, failures)
+			s.Logger.Errorf("ObtainCertificate for '%s' failed: %#v", domain, failures)
 			continue
 		}
 
 		// Store the domain so all instances can use it
 		if err := s.saveCertificate(domain, certificates); err != nil {
-			s.Logger.Error("Failed to save certificate for '%s': %#v", domain, err)
+			s.Logger.Errorf("Failed to save certificate for '%s': %#v", domain, err)
 		} else {
-			s.Logger.Info("Stored certificate for '%s' in repository", domain)
+			s.Logger.Infof("Stored certificate for '%s' in repository", domain)
 		}
 	}
 

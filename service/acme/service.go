@@ -181,7 +181,7 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 			allDomains = append(allDomains, domain)
 			path, err := s.Cache.GetDomainCertificatePath(domain)
 			if err != nil {
-				s.Logger.Error("Failed to get domain certificate path for '%s': %#v", domain, err)
+				s.Logger.Errorf("Failed to get domain certificate path for '%s': %#v", domain, err)
 			} else if path != "" {
 				// Certificate path found
 				sr.Selectors[selIndex].TmpSslCertPath = path
@@ -202,9 +202,9 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 			// Now request the certificates
 			if err := s.Requester.RequestCertificates(domains); err != nil {
 				if IsNotMaster(err) {
-					s.Logger.Info("Another instance is master, so requesting certificates is cancelled.")
+					s.Logger.Infof("Another instance is master, so requesting certificates is cancelled.")
 				} else {
-					s.Logger.Error("Failed to request certificates: %#v", err)
+					s.Logger.Errorf("Failed to request certificates: %#v", err)
 				}
 			}
 		}()
