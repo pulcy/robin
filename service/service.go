@@ -235,6 +235,7 @@ func (s *Service) restartHaproxy() error {
 		"-f",
 		s.HaproxyConfPath,
 	}
+	lastPid := s.lastPid
 	if s.lastPid > 0 {
 		args = append(args, "-sf", strconv.Itoa(s.lastPid))
 	}
@@ -266,6 +267,17 @@ func (s *Service) restartHaproxy() error {
 			s.Logger.Debug("haproxy pid %d terminated", pid)
 		}
 	}()
+
+	if lastPid != 0 {
+		// Make sure the old haproxy terminates
+		go func() {
+			time.Sleep(time.Second * 10)
+			p, _ := os.FindProcess(lastPid)
+			if p != nil {
+				p.Kill()
+			}
+		}()
+	}
 
 	return nil
 }
