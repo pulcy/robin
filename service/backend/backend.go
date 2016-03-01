@@ -89,13 +89,14 @@ func (list ServiceInstances) Sort() {
 }
 
 type ServiceSelector struct {
-	Weight         int    // How important is this selector. (0-100), 100 being most important
-	Domain         string // Domain to match on
-	SslCertName    string // SSL certificate filename
-	TmpSslCertPath string // Path of generated certificate file
-	PathPrefix     string // Prefix of HTTP path to match on
-	Private        bool   // If set, match on private port (81), otherwise match of public port (80,443)
-	Users          Users  // If set, require authentication for one of these users
+	Weight            int    // How important is this selector. (0-100), 100 being most important
+	Domain            string // Domain to match on
+	SslCertName       string // SSL certificate filename
+	TmpSslCertPath    string // Path of generated certificate file
+	PathPrefix        string // Prefix of HTTP path to match on
+	Private           bool   // If set, match on private port (81), otherwise match of public port (80,443)
+	Users             Users  // If set, require authentication for one of these users
+	AllowUnauthorized bool   // If set, allow all for this path
 }
 
 func (fs ServiceSelector) FullString() string {
@@ -104,7 +105,7 @@ func (fs ServiceSelector) FullString() string {
 		users = append(users, user.FullString())
 	}
 	sort.Strings(users)
-	return fmt.Sprintf("%03d-%s-%s-%s-%v-%#v", (100 - fs.Weight), fs.Domain, fs.SslCertName, fs.PathPrefix, fs.Private, users)
+	return fmt.Sprintf("%03d-%s-%s-%s-%v-%#v-%v", (100 - fs.Weight), fs.Domain, fs.SslCertName, fs.PathPrefix, fs.Private, users, fs.AllowUnauthorized)
 }
 
 func (ss ServiceSelector) IsSecure() bool {

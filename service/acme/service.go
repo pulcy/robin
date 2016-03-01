@@ -233,9 +233,10 @@ func (s *acmeService) createAcmeServiceRegistration() backend.ServiceRegistratio
 		},
 		Selectors: backend.ServiceSelectors{
 			backend.ServiceSelector{
-				Weight:     100,
-				PathPrefix: pathPrefix,
-				Private:    false,
+				AllowUnauthorized: true,
+				Weight:            100,
+				PathPrefix:        pathPrefix,
+				Private:           false,
 			},
 		},
 		HttpCheckPath: "",
