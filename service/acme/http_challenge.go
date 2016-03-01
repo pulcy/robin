@@ -91,12 +91,13 @@ func (s *httpChallengeProvider) Start() error {
 			}
 			r, err := kAPI.Get(context.Background(), s.etcdTokenKey(token), options)
 			if err != nil {
-				s.Logger.Errorf("Failed to get keyAuth for token '%s'", token)
-				// TODO
+				s.Logger.Errorf("Failed to get keyAuth for token '%s': %#v", token, err)
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("NOT FOUND"))
 				return
 			}
 			keyAuth := r.Node.Value
-			s.Logger.Debugf("Found keyAuth for token '%s'", token)
+			s.Logger.Infof("Found keyAuth for token '%s'", token)
 			w.Header().Add("Content-Type", "text/plain")
 			w.Write([]byte(keyAuth))
 		} else {

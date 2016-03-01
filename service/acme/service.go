@@ -202,7 +202,7 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 			// Now request the certificates
 			if err := s.Requester.RequestCertificates(domains); err != nil {
 				if IsNotMaster(err) {
-					s.Logger.Infof("Another instance is master, so requesting certificates is cancelled.")
+					s.Logger.Debugf("Another instance is master, so requesting certificates is cancelled.")
 				} else {
 					s.Logger.Errorf("Failed to request certificates: %#v", err)
 				}
