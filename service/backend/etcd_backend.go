@@ -28,15 +28,17 @@ import (
 )
 
 const (
-	servicePrefix  = "service"
-	frontEndPrefix = "frontend"
+	servicePrefix        = "service"
+	frontEndPrefix       = "frontend"
+	recentWatchErrorsMax = 5
 )
 
 type etcdBackend struct {
-	client  client.Client
-	watcher client.Watcher
-	Logger  *logging.Logger
-	prefix  string
+	client            client.Client
+	watcher           client.Watcher
+	Logger            *logging.Logger
+	prefix            string
+	recentWatchErrors int
 }
 
 func NewEtcdBackend(logger *logging.Logger, uri *url.URL) (Backend, error) {
@@ -65,10 +67,19 @@ func NewEtcdBackend(logger *logging.Logger, uri *url.URL) (Backend, error) {
 
 // Watch for changes on a path and return where there is a change.
 func (eb *etcdBackend) Watch() error {
+	if eb.watcher == nil || eb.recentWatchErrors > recentWatchErrorsMax {
+		eb.recentWatchErrors = 0
+		kAPI := client.NewKeysAPI(eb.client)
+		options := &client.WatcherOptions{
+			Recursive: true,
+		}
+		eb.watcher = kAPI.Watcher(eb.prefix, options)
+	}
 	_, err := eb.watcher.Next(context.Background())
 	if err != nil {
 		return maskAny(err)
 	}
+	eb.recentWatchErrors = 0
 	return nil
 }
 
