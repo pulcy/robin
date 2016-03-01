@@ -50,9 +50,10 @@ var (
 )
 
 type useBlock struct {
-	AclNames    []string
-	AuthAclName string
-	Service     backend.ServiceRegistration
+	AclNames          []string
+	AuthAclName       string
+	AllowUnauthorized bool
+	Service           backend.ServiceRegistration
 }
 
 type selection struct {
@@ -282,9 +283,10 @@ func createAcls(section *haproxy.Section, services backend.ServiceRegistrations,
 			aclNames = append(aclNames, aclName)
 		}
 		useBlocks = append(useBlocks, useBlock{
-			AclNames:    aclNames,
-			AuthAclName: authAclName,
-			Service:     pair.Service,
+			AclNames:          aclNames,
+			AuthAclName:       authAclName,
+			Service:           pair.Service,
+			AllowUnauthorized: pair.Selector.AllowUnauthorized,
 		})
 	}
 	return useBlocks
@@ -298,7 +300,9 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 			continue
 		}
 		acls := strings.Join(useBlock.AclNames, " ")
-		if useBlock.AuthAclName != "" {
+		if useBlock.AllowUnauthorized {
+			section.Add(fmt.Sprintf("http-request allow if %s", acls))
+		} else if useBlock.AuthAclName != "" {
 			section.Add(fmt.Sprintf("http-request allow if %s %s", acls, useBlock.AuthAclName))
 			section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
 		}
