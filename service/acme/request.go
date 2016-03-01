@@ -26,8 +26,11 @@ import (
 
 const (
 	requestCertificatesLockName = "requestCertificates"
-	requestCertificatesLockTTL  = 30 // sec
 	requestDelay                = time.Second * 5
+)
+
+var (
+	requestCertificatesLockTTL = time.Second * 60
 )
 
 type CertificateRequester interface {
