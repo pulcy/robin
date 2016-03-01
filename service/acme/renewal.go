@@ -91,6 +91,11 @@ func (rm *renewalMonitor) renewCertificateIfNeeded(domain string) error {
 	if err != nil {
 		return maskAny(err)
 	}
+	if cert == nil {
+		// Domain certificate not found, nothing to renewal
+		rm.Logger.Debugf("no certificate found for '%s', so nothing to renew", domain)
+		return nil
+	}
 
 	// Get expiration time of certificate
 	expTime, err := acme.GetPEMCertExpiration(cert)
