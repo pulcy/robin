@@ -50,7 +50,7 @@ type etcdCertificatesRepository struct {
 // isEtcdWithCode returns true if the given error is
 // and EtcdError with given error code.
 func isEtcdWithCode(err error, errCode int) bool {
-	if e, ok := err.(*client.Error); ok {
+	if e, ok := err.(client.Error); ok {
 		return e.Code == errCode
 	}
 	return false
