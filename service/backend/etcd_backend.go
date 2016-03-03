@@ -180,6 +180,7 @@ type frontendRecord struct {
 	Service       string                   `json:"service,omitempty"`
 	Mode          string                   `json:"mode,omitempty"` // http|tcp
 	HttpCheckPath string                   `json:"http-check-path,omitempty"`
+	Sticky        bool                     `json:"sticky,omitempty"`
 }
 
 type frontendSelectorRecord struct {
@@ -239,6 +240,9 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 			}
 			if fr.Mode != "" && service.Mode == "" {
 				service.Mode = fr.Mode
+			}
+			if fr.Sticky {
+				service.Sticky = true
 			}
 			for _, sel := range fr.Selectors {
 				if sel.Port != 0 && sel.Port != service.ServicePort {

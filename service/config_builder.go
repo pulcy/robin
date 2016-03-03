@@ -191,9 +191,11 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 			}
 			// Create backend
 			backendSection := c.Section(fmt.Sprintf("backend %s", backendName(sr, selection{Private: private, Http: sr.IsHttp()})))
-			backendSection.Add(
-				"balance roundrobin",
-			)
+			if sr.Sticky {
+				backendSection.Add("balance source")
+			} else {
+				backendSection.Add("balance roundrobin")
+			}
 			if sr.IsHttp() {
 				backendSection.Add("mode http")
 			} else if sr.IsTcp() {

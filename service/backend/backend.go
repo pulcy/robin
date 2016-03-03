@@ -35,15 +35,18 @@ type ServiceRegistration struct {
 	Selectors     ServiceSelectors // List of selectors to match traffic to this service
 	HttpCheckPath string           // Path (on the service) used for health checks (can be empty)
 	Mode          string           // http|tcp
+	Sticky        bool             // Switched blancing mode to source
 }
 
 func (sr ServiceRegistration) FullString() string {
-	return fmt.Sprintf("%s-%d-%s-%s-%s",
+	return fmt.Sprintf("%s-%d-%s-%s-%s-%s-%v",
 		sr.ServiceName,
 		sr.ServicePort,
 		sr.Instances.FullString(),
 		sr.Selectors.FullString(),
-		sr.HttpCheckPath)
+		sr.HttpCheckPath,
+		sr.Mode,
+		sr.Sticky)
 }
 
 func (sr ServiceRegistration) IsHttp() bool {
