@@ -16,7 +16,6 @@ package service
 
 import (
 	"fmt"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -313,7 +312,8 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 		}
 		for _, rwRule := range useBlock.Selector.RewriteRules {
 			if rwRule.PathPrefix != "" {
-				section.Add(fmt.Sprintf("http-request set-path %s if %s", path.Join(rwRule.PathPrefix, "%[path]"), acls))
+				prefix := strings.TrimSuffix(rwRule.PathPrefix, "/")
+				section.Add(fmt.Sprintf("http-request set-path %s%s if %s", prefix, "%[path]", acls))
 			}
 		}
 		section.Add(fmt.Sprintf("use_backend %s if %s", backendName(useBlock.Service, selection), acls))
