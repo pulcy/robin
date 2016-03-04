@@ -311,8 +311,7 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 			section.Add(fmt.Sprintf("http-request allow if %s %s", acls, useBlock.AuthAclName))
 			section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
 		}
-		rwRule := useBlock.Selector.RewriteRule
-		if rwRule != nil {
+		for _, rwRule := range useBlock.Selector.RewriteRules {
 			if rwRule.PathPrefix != "" {
 				section.Add(fmt.Sprintf("http-request set-path %s if %s", path.Join(rwRule.PathPrefix, "%[path]"), acls))
 			}
