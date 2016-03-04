@@ -184,18 +184,23 @@ type frontendRecord struct {
 }
 
 type frontendSelectorRecord struct {
-	Weight     int          `json:"weight,omitempty"`
-	Domain     string       `json:"domain,omitempty"`
-	SslCert    string       `json:"ssl-cert,omitempty"`
-	PathPrefix string       `json:"path-prefix,omitempty"`
-	Port       int          `json:"port,omitempty"`
-	Private    bool         `json:"private,omitempty"`
-	Users      []userRecord `json:"users,omitempty"`
+	Weight      int          `json:"weight,omitempty"`
+	Domain      string       `json:"domain,omitempty"`
+	SslCert     string       `json:"ssl-cert,omitempty"`
+	PathPrefix  string       `json:"path-prefix,omitempty"`
+	Port        int          `json:"port,omitempty"`
+	Private     bool         `json:"private,omitempty"`
+	Users       []userRecord `json:"users,omitempty"`
+	RewriteRule *rewriteRule `json:"rewrite-rule,omitempty"`
 }
 
 type userRecord struct {
 	Name         string `json:"user"`
 	PasswordHash string `json:"pwhash"`
+}
+
+type rewriteRule struct {
+	PathPrefix string `json:"path-prefix"`
 }
 
 // Load all registered front-ends
@@ -254,6 +259,11 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 					SslCertName: sel.SslCert,
 					PathPrefix:  sel.PathPrefix,
 					Private:     sel.Private,
+				}
+				if sel.RewriteRule != nil {
+					srSel.RewriteRule = &RewriteRule{
+						PathPrefix: sel.RewriteRule.PathPrefix,
+					}
 				}
 				for _, user := range sel.Users {
 					srSel.Users = append(srSel.Users, User{
