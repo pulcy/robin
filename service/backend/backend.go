@@ -100,6 +100,7 @@ type ServiceSelector struct {
 	Private           bool   // If set, match on private port (81), otherwise match of public port (80,443)
 	Users             Users  // If set, require authentication for one of these users
 	AllowUnauthorized bool   // If set, allow all for this path
+	RewriteRules      []RewriteRule
 }
 
 func (fs ServiceSelector) FullString() string {
@@ -141,6 +142,10 @@ func (list ServiceSelectors) Contains(sel ServiceSelector) bool {
 		}
 	}
 	return false
+}
+
+type RewriteRule struct {
+	PathPrefix string
 }
 
 type User struct {

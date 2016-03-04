@@ -53,6 +53,7 @@ type useBlock struct {
 	AclNames          []string
 	AuthAclName       string
 	AllowUnauthorized bool
+	Selector          backend.ServiceSelector
 	Service           backend.ServiceRegistration
 }
 
@@ -288,6 +289,7 @@ func createAcls(section *haproxy.Section, services backend.ServiceRegistrations,
 			AclNames:          aclNames,
 			AuthAclName:       authAclName,
 			Service:           pair.Service,
+			Selector:          pair.Selector,
 			AllowUnauthorized: pair.Selector.AllowUnauthorized,
 		})
 	}
@@ -307,6 +309,12 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 		} else if useBlock.AuthAclName != "" {
 			section.Add(fmt.Sprintf("http-request allow if %s %s", acls, useBlock.AuthAclName))
 			section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
+		}
+		for _, rwRule := range useBlock.Selector.RewriteRules {
+			if rwRule.PathPrefix != "" {
+				prefix := strings.TrimSuffix(rwRule.PathPrefix, "/")
+				section.Add(fmt.Sprintf("http-request set-path %s%s if %s", prefix, "%[path]", acls))
+			}
 		}
 		section.Add(fmt.Sprintf("use_backend %s if %s", backendName(useBlock.Service, selection), acls))
 	}
