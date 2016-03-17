@@ -68,23 +68,6 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	c.Section("global").Add(globalOptions...)
 	c.Section("defaults").Add(defaultsOptions...)
 
-	// Create stats section
-	if s.StatsPort != 0 && s.StatsUser != "" && s.StatsPassword != "" {
-		statsSection := c.Section("frontend stats")
-		statsSsl := ""
-		if s.StatsSslCert != "" {
-			statsSsl = fmt.Sprintf("ssl crt %s no-sslv3", filepath.Join(s.SslCertsFolder, s.StatsSslCert))
-		}
-		statsSection.Add(
-			"mode http",
-			fmt.Sprintf("bind *:%d %s", s.StatsPort, statsSsl),
-			"stats enable",
-			"stats uri /",
-			"stats realm Haproxy\\ Statistics",
-			fmt.Sprintf("stats auth %s:%s", s.StatsUser, s.StatsPassword),
-		)
-	}
-
 	// Create user lists for each frontend (that needs it)
 	for _, sr := range services {
 		for selIndex, sel := range sr.Selectors {
@@ -176,6 +159,27 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		useBlocks = createAcls(privateTcpFrontEndSection, services, privateTcpFrontEndSelection, aclNameGen)
 		// Create link to backend
 		createUseBackends(privateTcpFrontEndSection, useBlocks, privateTcpFrontEndSelection)
+	}
+
+	// Create stats section
+	if s.StatsPort != 0 && s.StatsUser != "" && s.StatsPassword != "" {
+		statsSection := c.Section("frontend stats")
+		statsCerts := strings.Join(certs, " ")
+		if s.StatsSslCert != "" {
+			statsCerts = fmt.Sprintf("crt %s %s", filepath.Join(s.SslCertsFolder, s.StatsSslCert), statsCerts)
+		}
+		statsSsl := ""
+		if statsCerts != "" {
+			statsSsl = fmt.Sprintf("ssl %s no-sslv3", statsCerts)
+		}
+		statsSection.Add(
+			"mode http",
+			fmt.Sprintf("bind *:%d %s", s.StatsPort, statsSsl),
+			"stats enable",
+			"stats uri /",
+			"stats realm Haproxy\\ Statistics",
+			fmt.Sprintf("stats auth %s:%s", s.StatsUser, s.StatsPassword),
+		)
 	}
 
 	// Create backends
