@@ -47,6 +47,12 @@ var (
 		"errorfile 503 /app/errors/503.http",
 		"errorfile 504 /app/errors/504.http",
 	}
+	securityOptions = []string{
+		"http-response set-header Strict-Transport-Security max-age=63072000",
+		"http-response set-header X-Frame-Option SAMEORIGIN",
+		"http-response set-header X-XSS-Protection 1;mode=block",
+		"http-response set-header X-Content-Type-Options nosniff",
+	}
 )
 
 type useBlock struct {
@@ -180,6 +186,9 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 			"stats realm Haproxy\\ Statistics",
 			fmt.Sprintf("stats auth %s:%s", s.StatsUser, s.StatsPassword),
 		)
+		if statsCerts != "" {
+			statsSection.Add(securityOptions...)
+		}
 	}
 
 	// Create backends
@@ -203,6 +212,7 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 			}
 			if sr.IsHttp() {
 				backendSection.Add("mode http")
+				backendSection.Add(securityOptions...)
 			} else if sr.IsTcp() {
 				backendSection.Add("mode tcp")
 			} else {
