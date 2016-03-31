@@ -177,6 +177,15 @@ func (sr *ServiceRegistration) HasPrivateSelectors() bool {
 	return false
 }
 
+func (sr *ServiceRegistration) HasAllowUnauthorized() bool {
+	for _, sel := range sr.Selectors {
+		if sel.AllowUnauthorized {
+			return true
+		}
+	}
+	return false
+}
+
 // Len is the number of elements in the collection.
 func (list ServiceSelectors) Len() int {
 	return len(list)

@@ -112,9 +112,9 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		publicFrontEndSection.Add(
 			fmt.Sprintf("bind *:443 ssl %s no-sslv3", strings.Join(certs, " ")),
 		)
-	}
-	if s.ForceSsl {
-		publicFrontEndSection.Add("redirect scheme https if !{ ssl_fc }")
+		if s.ForceSsl {
+			publicFrontEndSection.Add("redirect scheme https if !{ ssl_fc }")
+		}
 	}
 	publicFrontEndSection.Add(
 		"mode http",
@@ -212,7 +212,9 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 			}
 			if sr.IsHttp() {
 				backendSection.Add("mode http")
-				backendSection.Add(securityOptions...)
+				if !sr.HasAllowUnauthorized() {
+					backendSection.Add(securityOptions...)
+				}
 			} else if sr.IsTcp() {
 				backendSection.Add("mode tcp")
 			} else {
