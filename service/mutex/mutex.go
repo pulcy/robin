@@ -131,7 +131,7 @@ func (gm *GlobalMutex) Locked() bool {
 func (gm *GlobalMutex) updateLoop(released chan struct{}) {
 	for {
 		select {
-		case <-time.After(time.Duration((gm.ttl/2)-1) * time.Second):
+		case <-time.After((gm.ttl / 2) - (500 * time.Millisecond)):
 			if err := gm.update(); err != nil {
 				// This is really bad, we cannot update the mutex
 				// so it may expire on its own.
