@@ -344,13 +344,20 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 				section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
 			}
 		}
+		skipUseBackend := false
 		for _, rwRule := range useBlock.Selector.RewriteRules {
 			if rwRule.PathPrefix != "" {
 				prefix := strings.TrimSuffix(rwRule.PathPrefix, "/")
 				section.Add(fmt.Sprintf("http-request set-path %s%s if %s", prefix, "%[path]", acls))
 			}
+			if rwRule.Domain != "" {
+				section.Add(fmt.Sprintf("http-request redirect code 301 location %s%s if %s", rwRule.Domain, "%[req.uri]", acls))
+				skipUseBackend = true
+			}
 		}
-		section.Add(fmt.Sprintf("use_backend %s if %s", backendName(useBlock.Service, selection), acls))
+		if !skipUseBackend {
+			section.Add(fmt.Sprintf("use_backend %s if %s", backendName(useBlock.Service, selection), acls))
+		}
 	}
 }
 
