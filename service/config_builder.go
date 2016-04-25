@@ -87,9 +87,6 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		}
 	}
 
-	// Create config for all registrations
-	publicFrontEndSection := c.Section("frontend http-in")
-	publicFrontEndSection.Add("bind *:80")
 	// Collect certificates
 	certs := []string{}
 	certsSet := make(map[string]struct{})
@@ -108,28 +105,41 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 			}
 		}
 	}
+
+	// Create config for all registrations
+	publicHttpFrontEndSection := c.Section("frontend http-in")
+	publicHttpFrontEndSection.Add("bind *:80")
+	var publicHttpsFrontEndSection *haproxy.Section
+	publicFrontEndSections := []*haproxy.Section{publicHttpFrontEndSection}
 	if len(certs) > 0 {
-		publicFrontEndSection.Add(
+		publicHttpsFrontEndSection = c.Section("frontend https-in")
+		publicFrontEndSections = append(publicFrontEndSections, publicHttpsFrontEndSection)
+		publicHttpsFrontEndSection.Add(
 			fmt.Sprintf("bind *:443 ssl %s no-sslv3", strings.Join(certs, " ")),
 		)
 		if s.ForceSsl {
-			publicFrontEndSection.Add("redirect scheme https if !{ ssl_fc }")
+			publicHttpFrontEndSection.Add("redirect scheme https if !{ ssl_fc }")
 		}
 	}
-	publicFrontEndSection.Add(
-		"mode http",
-		"option forwardfor",
-		//"option httplog",
-		"reqadd X-Forwarded-Port:\\ %[dst_port]",
-		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
-		"default_backend fallback",
-	)
+	for _, section := range publicFrontEndSections {
+		section.Add(
+			"mode http",
+			"option forwardfor",
+			//"option httplog",
+			"reqadd X-Forwarded-Port:\\ %[dst_port]",
+			"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
+			"default_backend fallback",
+		)
+	}
 	aclNameGen := NewNameGenerator("acl")
 	// Create acls
 	publicFrontEndSelection := selection{Private: false, Http: true}
-	useBlocks := createAcls(publicFrontEndSection, services, publicFrontEndSelection, aclNameGen)
-	// Create link to backend
-	createUseBackends(publicFrontEndSection, useBlocks, publicFrontEndSelection)
+	useBlocks := createAcls(publicFrontEndSections, services, publicFrontEndSelection, aclNameGen)
+	// Create link to backends
+	createUseBackends(publicHttpFrontEndSection, useBlocks, publicFrontEndSelection, (publicHttpsFrontEndSection != nil))
+	if publicHttpsFrontEndSection != nil {
+		createUseBackends(publicHttpsFrontEndSection, useBlocks, publicFrontEndSelection, false)
+	}
 
 	// Create config for private HTTP services
 	privateFrontEndSection := c.Section("frontend http-in-private")
@@ -144,9 +154,9 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	)
 	// Create acls
 	privateFrontEndSelection := selection{Private: true, Http: true}
-	useBlocks = createAcls(privateFrontEndSection, services, privateFrontEndSelection, aclNameGen)
+	useBlocks = createAcls([]*haproxy.Section{privateFrontEndSection}, services, privateFrontEndSelection, aclNameGen)
 	// Create link to backend
-	createUseBackends(privateFrontEndSection, useBlocks, privateFrontEndSelection)
+	createUseBackends(privateFrontEndSection, useBlocks, privateFrontEndSelection, false)
 
 	// Create config for private TCP services
 	if s.PrivateTcpSslCert != "" {
@@ -162,9 +172,9 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		)
 		// Create acls
 		privateTcpFrontEndSelection := selection{Private: true, Http: false}
-		useBlocks = createAcls(privateTcpFrontEndSection, services, privateTcpFrontEndSelection, aclNameGen)
+		useBlocks = createAcls([]*haproxy.Section{privateTcpFrontEndSection}, services, privateTcpFrontEndSelection, aclNameGen)
 		// Create link to backend
-		createUseBackends(privateTcpFrontEndSection, useBlocks, privateTcpFrontEndSelection)
+		createUseBackends(privateTcpFrontEndSection, useBlocks, privateTcpFrontEndSelection, false)
 	}
 
 	// Create stats section
@@ -265,7 +275,7 @@ func createAclRules(sel backend.ServiceSelector, isTcp bool) []string {
 
 // creteAcls create `acl` rules for the given services and adds them
 // to the given section
-func createAcls(section *haproxy.Section, services backend.ServiceRegistrations, selection selection, ng *nameGenerator) []useBlock {
+func createAcls(sections []*haproxy.Section, services backend.ServiceRegistrations, selection selection, ng *nameGenerator) []useBlock {
 	pairs := selectorServicePairs{}
 	for _, sr := range services {
 		if sr.IsHttp() == selection.Http {
@@ -289,7 +299,9 @@ func createAcls(section *haproxy.Section, services backend.ServiceRegistrations,
 		authAclName := ""
 		if len(pair.Selector.Users) > 0 {
 			authAclName = "auth_" + ng.Next()
-			section.Add(fmt.Sprintf("acl %s http_auth(%s)", authAclName, userListName(pair.Service, pair.SelectorIndex)))
+			for _, section := range sections {
+				section.Add(fmt.Sprintf("acl %s http_auth(%s)", authAclName, userListName(pair.Service, pair.SelectorIndex)))
+			}
 		}
 
 		if len(rules) == 0 && authAclName == "" {
@@ -298,7 +310,9 @@ func createAcls(section *haproxy.Section, services backend.ServiceRegistrations,
 		aclNames := []string{}
 		for _, rule := range rules {
 			aclName := ng.Next()
-			section.Add(fmt.Sprintf("acl %s %s", aclName, rule))
+			for _, section := range sections {
+				section.Add(fmt.Sprintf("acl %s %s", aclName, rule))
+			}
 			aclNames = append(aclNames, aclName)
 		}
 		useBlocks = append(useBlocks, useBlock{
@@ -314,7 +328,7 @@ func createAcls(section *haproxy.Section, services backend.ServiceRegistrations,
 
 // createUseBackends creates a `use_backend` rules for the given input
 // and adds it to the given section
-func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection selection) {
+func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection selection, redirectHttps bool) {
 	for _, useBlock := range useBlocks {
 		if len(useBlock.AclNames) == 0 {
 			continue
@@ -323,8 +337,12 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 		if useBlock.AllowUnauthorized {
 			section.Add(fmt.Sprintf("http-request allow if %s", acls))
 		} else if useBlock.AuthAclName != "" {
-			section.Add(fmt.Sprintf("http-request allow if %s %s", acls, useBlock.AuthAclName))
-			section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
+			if redirectHttps {
+				section.Add(fmt.Sprintf("redirect scheme https if !{ ssl_fc } %s", acls))
+			} else {
+				section.Add(fmt.Sprintf("http-request allow if %s %s", acls, useBlock.AuthAclName))
+				section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
+			}
 		}
 		for _, rwRule := range useBlock.Selector.RewriteRules {
 			if rwRule.PathPrefix != "" {
