@@ -351,7 +351,12 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 				section.Add(fmt.Sprintf("http-request set-path %s%s if %s", prefix, "%[path]", acls))
 			}
 			if rwRule.Domain != "" {
-				section.Add(fmt.Sprintf("http-request redirect code 301 location %s%s if %s", rwRule.Domain, "%[req.uri]", acls))
+				if redirectHttps {
+					section.Add(fmt.Sprintf("http-request redirect prefix https://%s code 301 if %s", rwRule.Domain, acls))
+				} else {
+					section.Add(fmt.Sprintf("http-request redirect prefix https://%s code 301 if { ssl_fc } %s", rwRule.Domain, acls))
+					section.Add(fmt.Sprintf("http-request redirect prefix http://%s code 301 if !{ ssl_fc } %s", rwRule.Domain, acls))
+				}
 				skipUseBackend = true
 			}
 		}
