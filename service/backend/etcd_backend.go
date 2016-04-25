@@ -200,7 +200,8 @@ type userRecord struct {
 }
 
 type rewriteRule struct {
-	PathPrefix string `json:"path-prefix"`
+	PathPrefix string `json:"path-prefix,omitempty"`
+	Domain     string `json:"domain,omitempty"`
 }
 
 // Load all registered front-ends
@@ -263,6 +264,7 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 				for _, rwRule := range sel.RewriteRules {
 					srSel.RewriteRules = append(srSel.RewriteRules, RewriteRule{
 						PathPrefix: rwRule.PathPrefix,
+						Domain:     rwRule.Domain,
 					})
 				}
 				for _, user := range sel.Users {

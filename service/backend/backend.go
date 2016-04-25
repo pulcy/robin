@@ -146,6 +146,7 @@ func (list ServiceSelectors) Contains(sel ServiceSelector) bool {
 
 type RewriteRule struct {
 	PathPrefix string
+	Domain     string
 }
 
 type User struct {
