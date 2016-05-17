@@ -238,7 +238,8 @@ func (eb *etcdBackend) mergeTrees(services ServiceRegistrations, frontends []fro
 	result := ServiceRegistrations{}
 	for _, service := range services {
 		for _, fr := range frontends {
-			if service.ServiceName != fr.Service {
+			extService := fmt.Sprintf("%s-%d", fr.Service, service.ServicePort)
+			if service.ServiceName != fr.Service && service.ServiceName != extService {
 				continue
 			}
 			if fr.HttpCheckPath != "" && service.HttpCheckPath == "" {
