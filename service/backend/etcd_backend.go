@@ -77,6 +77,7 @@ func (eb *etcdBackend) Watch() error {
 	}
 	_, err := eb.watcher.Next(context.Background())
 	if err != nil {
+		eb.recentWatchErrors++
 		return maskAny(err)
 	}
 	eb.recentWatchErrors = 0
