@@ -231,7 +231,11 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 				return "", maskAny(fmt.Errorf("Unknown service mode '%s'", sr.Mode))
 			}
 			if sr.HttpCheckPath != "" {
-				backendSection.Add(fmt.Sprintf("option httpchk GET %s", sr.HttpCheckPath))
+				method := sr.HttpCheckMethod
+				if method == "" {
+					method = "GET"
+				}
+				backendSection.Add(fmt.Sprintf("option httpchk %s %s", method, sr.HttpCheckPath))
 			}
 
 			for i, instance := range sr.Instances {

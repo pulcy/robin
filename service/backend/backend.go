@@ -29,22 +29,24 @@ type Backend interface {
 }
 
 type ServiceRegistration struct {
-	ServiceName   string           // Name of the service
-	ServicePort   int              // Port the service is listening on (inside its container)
-	Instances     ServiceInstances // List instances of the service (can not be empty)
-	Selectors     ServiceSelectors // List of selectors to match traffic to this service
-	HttpCheckPath string           // Path (on the service) used for health checks (can be empty)
-	Mode          string           // http|tcp
-	Sticky        bool             // Switched blancing mode to source
+	ServiceName     string           // Name of the service
+	ServicePort     int              // Port the service is listening on (inside its container)
+	Instances       ServiceInstances // List instances of the service (can not be empty)
+	Selectors       ServiceSelectors // List of selectors to match traffic to this service
+	HttpCheckPath   string           // Path (on the service) used for health checks (can be empty)
+	HttpCheckMethod string           // Method (on the service) used for health checks (can be empty)
+	Mode            string           // http|tcp
+	Sticky          bool             // Switched blancing mode to source
 }
 
 func (sr ServiceRegistration) FullString() string {
-	return fmt.Sprintf("%s-%d-%s-%s-%s-%s-%v",
+	return fmt.Sprintf("%s-%d-%s-%s-%s-%s-%s-%v",
 		sr.ServiceName,
 		sr.ServicePort,
 		sr.Instances.FullString(),
 		sr.Selectors.FullString(),
 		sr.HttpCheckPath,
+		sr.HttpCheckMethod,
 		sr.Mode,
 		sr.Sticky)
 }
