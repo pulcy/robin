@@ -243,7 +243,12 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 			}
 
 			for i, instance := range sr.Instances {
-				id := fmt.Sprintf("%s-%d-%d", sr.ServiceName, sr.ServicePort, (i + 1))
+				id := fmt.Sprintf("s%d-%s-%d", i, instance.IP, instance.Port)
+				id = strings.Replace(id, ".", "_", -1)
+				id = strings.Replace(id, ":", "_", -1)
+				id = strings.Replace(id, "[", "", -1)
+				id = strings.Replace(id, "]", "", -1)
+				id = strings.Replace(id, "%", "", -1)
 				check := ""
 				if sr.HttpCheckPath != "" || sr.HttpCheckMethod != "" {
 					check = "check"
