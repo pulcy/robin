@@ -147,8 +147,9 @@ func (list ServiceSelectors) Contains(sel ServiceSelector) bool {
 }
 
 type RewriteRule struct {
-	PathPrefix string
-	Domain     string
+	PathPrefix       string // Add this to the start of the request path.
+	RemovePathPrefix string // Remove this from the start of the request path.
+	Domain           string // Redirect to this domain
 }
 
 type User struct {

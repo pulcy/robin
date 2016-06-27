@@ -40,6 +40,7 @@ type UserRecord struct {
 }
 
 type RewriteRule struct {
-	PathPrefix string `json:"path-prefix,omitempty"`
-	Domain     string `json:"domain,omitempty"`
+	PathPrefix       string `json:"path-prefix,omitempty"`        // Add this to the start of the request path.
+	RemovePathPrefix string `json:"remove-path-prefix,omitempty"` // Remove this from the start of the request path.
+	Domain           string `json:"domain,omitempty"`             // Redirect to this domain
 }

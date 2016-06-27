@@ -180,8 +180,9 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 				}
 				for _, rwRule := range sel.RewriteRules {
 					srSel.RewriteRules = append(srSel.RewriteRules, RewriteRule{
-						PathPrefix: rwRule.PathPrefix,
-						Domain:     rwRule.Domain,
+						PathPrefix:       rwRule.PathPrefix,
+						RemovePathPrefix: rwRule.RemovePathPrefix,
+						Domain:           rwRule.Domain,
 					})
 				}
 				for _, user := range sel.Users {
