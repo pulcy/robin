@@ -165,6 +165,42 @@ var (
 			},
 			ResultPath: "./fixtures/same_domain_services.txt",
 		},
+		configTest{
+			Service: testService,
+			Services: backend.ServiceRegistrations{
+				backend.ServiceRegistration{
+					ServiceName: "master",
+					ServicePort: 80,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo.com",
+						},
+					},
+					HttpCheckMethod: "GET",
+					Mode:            "http",
+				},
+				backend.ServiceRegistration{
+					ServiceName: "slave",
+					ServicePort: 5000,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.35", Port: 7001},
+						backend.ServiceInstance{IP: "192.168.35.37", Port: 7007},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo.com",
+						},
+					},
+					Mode:   "http",
+					Backup: true,
+				},
+			},
+			ResultPath: "./fixtures/backup_services.txt",
+		},
 	}
 )
 

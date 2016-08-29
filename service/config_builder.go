@@ -255,8 +255,11 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 				id = strings.Replace(id, "]", "", -1)
 				id = strings.Replace(id, "%", "", -1)
 				check := ""
-				if sr.HttpCheckPath != "" || sr.HttpCheckMethod != "" {
+				if sr.HttpCheckPath != "" || sr.HttpCheckMethod != "" || sr.Backup {
 					check = "check"
+					if sr.Backup {
+						check = check + " backup"
+					}
 				}
 				backendSection.Add(fmt.Sprintf("server %s %s:%d %s", id, instance.IP, instance.Port, check))
 			}

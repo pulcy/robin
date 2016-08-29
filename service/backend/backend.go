@@ -37,10 +37,11 @@ type ServiceRegistration struct {
 	HttpCheckMethod string           // Method (on the service) used for health checks (can be empty)
 	Mode            string           // http|tcp
 	Sticky          bool             // Switched blancing mode to source
+	Backup          bool             // If set all instances are backup only servers for their selectors
 }
 
 func (sr ServiceRegistration) FullString() string {
-	return fmt.Sprintf("%s-%d-%s-%s-%s-%s-%s-%v",
+	return fmt.Sprintf("%s-%d-%s-%s-%s-%s-%s-%v-%v",
 		sr.ServiceName,
 		sr.ServicePort,
 		sr.Instances.FullString(),
@@ -48,7 +49,8 @@ func (sr ServiceRegistration) FullString() string {
 		sr.HttpCheckPath,
 		sr.HttpCheckMethod,
 		sr.Mode,
-		sr.Sticky)
+		sr.Sticky,
+		sr.Backup)
 }
 
 func (sr ServiceRegistration) IsHttp() bool {

@@ -21,6 +21,7 @@ type FrontendRecord struct {
 	HttpCheckPath   string                   `json:"http-check-path,omitempty"`
 	HttpCheckMethod string                   `json:"http-check-method,omitempty"`
 	Sticky          bool                     `json:"sticky,omitempty"`
+	Backup          bool                     `json:"backup,omitempty"`
 }
 
 type FrontendSelectorRecord struct {

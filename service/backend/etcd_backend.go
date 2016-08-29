@@ -167,6 +167,9 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 			if fr.Sticky {
 				service.Sticky = true
 			}
+			if fr.Backup {
+				service.Backup = true
+			}
 			for _, sel := range fr.Selectors {
 				if sel.Port != 0 && sel.Port != service.ServicePort {
 					continue
