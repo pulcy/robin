@@ -201,6 +201,82 @@ var (
 			},
 			ResultPath: "./fixtures/backup_services.txt",
 		},
+		configTest{
+			Service: testService,
+			Services: backend.ServiceRegistrations{
+				backend.ServiceRegistration{
+					ServiceName: "private1",
+					ServicePort: 80,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain:  "service1.private",
+							Private: true,
+						},
+					},
+					Mode: "http",
+				},
+			},
+			ResultPath: "./fixtures/private_service.txt",
+		},
+		configTest{
+			Service: testService,
+			Services: backend.ServiceRegistrations{
+				backend.ServiceRegistration{
+					ServiceName: "service1",
+					ServicePort: 80,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+						backend.ServiceInstance{IP: "192.168.23.32", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo.com",
+						},
+						backend.ServiceSelector{
+							Domain:     "nested.foo.com",
+							PathPrefix: "/foo",
+						},
+						backend.ServiceSelector{
+							Domain:  "foo.com.private",
+							Private: true,
+						},
+						backend.ServiceSelector{
+							Domain:  "service1.private",
+							Private: true,
+						},
+					},
+					Mode: "http",
+				},
+			},
+			ResultPath: "./fixtures/many_frontends_service.txt",
+		},
+		configTest{
+			Service: testService,
+			Services: backend.ServiceRegistrations{
+				backend.ServiceRegistration{
+					ServiceName: "sticky1",
+					ServicePort: 80,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+						backend.ServiceInstance{IP: "192.168.23.32", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo.com",
+						},
+					},
+					Sticky: true,
+					Mode:   "http",
+				},
+			},
+			ResultPath: "./fixtures/sticky_service.txt",
+		},
 	}
 )
 
