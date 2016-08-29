@@ -1,0 +1,128 @@
+package service
+
+import (
+	"io/ioutil"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/pulcy/robin/service/backend"
+)
+
+type configTest struct {
+	Service    Service
+	Services   backend.ServiceRegistrations
+	ResultPath string
+}
+
+var (
+	testService = Service{}
+	configTests = []configTest{
+		configTest{
+			Service:    testService,
+			Services:   backend.ServiceRegistrations{},
+			ResultPath: "./fixtures/empty.txt",
+		},
+		configTest{
+			Service: testService,
+			Services: backend.ServiceRegistrations{
+				backend.ServiceRegistration{
+					ServiceName: "simple",
+					ServicePort: 80,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo.com",
+						},
+					},
+					Mode: "http",
+				},
+			},
+			ResultPath: "./fixtures/simple_service_2_instances.txt",
+		},
+		configTest{
+			Service: testService,
+			Services: backend.ServiceRegistrations{
+				backend.ServiceRegistration{
+					ServiceName: "simple12",
+					ServicePort: 80,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo.com",
+						},
+					},
+					Mode: "http",
+				},
+				backend.ServiceRegistration{
+					ServiceName: "simple2",
+					ServicePort: 5000,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 7001},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo2.com",
+						},
+					},
+					Mode: "http",
+				},
+				backend.ServiceRegistration{
+					ServiceName: "simple3",
+					ServicePort: 5000,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 7001},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							PathPrefix: "/prefix",
+							Weight:     100,
+						},
+					},
+					Mode: "http",
+				},
+			},
+			ResultPath: "./fixtures/simple_services.txt",
+		},
+	}
+)
+
+func TestConfigs(t *testing.T) {
+	updateFixtures := os.Getenv("UPDATE-FIXTURES") == "1"
+	for _, test := range configTests {
+		result, err := test.Service.renderConfig(test.Services)
+		if err != nil {
+			t.Errorf("Test failed: %#v", err)
+		} else {
+			if updateFixtures {
+				err := ioutil.WriteFile(test.ResultPath, []byte(result), 0644)
+				if err != nil {
+					t.Errorf("Cannot update fixture %s: %#v", test.ResultPath, err)
+				}
+			} else {
+				expectedRaw, err := ioutil.ReadFile(test.ResultPath)
+				if err != nil {
+					t.Errorf("Cannot read fixture %s: %#v", test.ResultPath, err)
+				} else {
+					expected := strings.Split(string(expectedRaw), "\n")
+					lines := strings.Split(result, "\n")
+					for i, line := range lines {
+						if i >= len(expected) {
+							t.Errorf("Unexpected addition: `%s`", line)
+							break
+						} else if expected[i] != line {
+							t.Errorf("Diff at %d: expected `%s` got `%s`", i, expected[i], line)
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+}
