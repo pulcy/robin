@@ -90,6 +90,81 @@ var (
 			},
 			ResultPath: "./fixtures/simple_services.txt",
 		},
+		configTest{
+			Service: testService,
+			Services: backend.ServiceRegistrations{
+				backend.ServiceRegistration{
+					ServiceName: "service1",
+					ServicePort: 80,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo.com",
+						},
+					},
+					Mode: "http",
+				},
+				backend.ServiceRegistration{
+					ServiceName: "service2",
+					ServicePort: 5000,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 7001},
+						backend.ServiceInstance{IP: "192.168.23.1", Port: 7005},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain: "foo.com",
+						},
+					},
+					Mode:            "http",
+					HttpCheckMethod: "OPTIONS",
+				},
+				backend.ServiceRegistration{
+					ServiceName: "service3_prefix",
+					ServicePort: 4700,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 7001},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							Domain:     "foo.com",
+							PathPrefix: "/prefix",
+						},
+					},
+					Mode: "http",
+				},
+				backend.ServiceRegistration{
+					ServiceName: "service4_small_prefix_only",
+					ServicePort: 4700,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 9001},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							PathPrefix: "/prefix-only",
+						},
+					},
+					Mode: "http",
+				},
+				backend.ServiceRegistration{
+					ServiceName: "service4_large_prefix_only",
+					ServicePort: 6004,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.33", Port: 19001},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{
+							PathPrefix: "/prefix/large",
+						},
+					},
+					Mode: "http",
+				},
+			},
+			ResultPath: "./fixtures/same_domain_services.txt",
+		},
 	}
 )
 

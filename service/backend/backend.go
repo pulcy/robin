@@ -69,6 +69,16 @@ func (list ServiceRegistrations) Sort() {
 	}
 }
 
+func (list ServiceRegistrations) Contains(sr ServiceRegistration) bool {
+	key := sr.FullString()
+	for _, x := range list {
+		if x.FullString() == key {
+			return true
+		}
+	}
+	return false
+}
+
 type ServiceInstance struct {
 	IP   string // IP address to connect to to reach the service instance
 	Port int    // Port to connect to to reach the service instance
@@ -111,7 +121,11 @@ func (fs ServiceSelector) FullString() string {
 		users = append(users, user.FullString())
 	}
 	sort.Strings(users)
-	return fmt.Sprintf("%03d-%s-%s-%s-%v-%#v-%v", (100 - fs.Weight), fs.Domain, fs.SslCertName, fs.PathPrefix, fs.Private, users, fs.AllowUnauthorized)
+	selectorRelevance := len(strings.Split(fs.PathPrefix, "/"))
+	if fs.Domain == "" {
+		selectorRelevance += 100
+	}
+	return fmt.Sprintf("%03d-%03d-%s-%s-%s-%v-%#v-%v", (100 - fs.Weight), (1000 - selectorRelevance), fs.Domain, fs.SslCertName, fs.PathPrefix, fs.Private, users, fs.AllowUnauthorized)
 }
 
 func (ss ServiceSelector) IsSecure() bool {
