@@ -19,6 +19,10 @@ import (
 )
 
 const (
+	projectName = "robin"
+)
+
+const (
 	defaultStatsPort         = 7088
 	defaultStatsSslCert      = ""
 	defaultSslCertsFolder    = "/certs/"
@@ -35,6 +39,12 @@ const (
 	defaultPrivateKeyPathTmpl   = "~/.pulcy/acme/private-key.pem"
 	defaultRegistrationPathTmpl = "~/.pulcy/acme/registration.json"
 	defaultTmpCertificatePath   = "/tmp/certificates"
+)
+
+const (
+	defaultMetricsHost      = "0.0.0.0"
+	defaultMetricsPort      = 8022
+	defaultPrivateStatsPort = 7089
 )
 
 func defaultPrivateKeyPath() string {

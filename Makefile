@@ -55,11 +55,13 @@ update-vendor:
 		github.com/juju/errgo \
 		github.com/mitchellh/go-homedir \
 		github.com/op/go-logging \
+		github.com/pulcy/macaron-utils \
 		github.com/pulcy/registrator-api \
 		github.com/pulcy/robin-api \
 		github.com/spf13/cobra \
 		github.com/spf13/pflag \
-		github.com/xenolf/lego
+		github.com/xenolf/lego \
+		gopkg.in/macaron.v1
 
 $(BIN): $(GOBUILDDIR) $(SOURCES)
 	docker run \

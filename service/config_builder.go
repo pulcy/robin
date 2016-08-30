@@ -202,6 +202,17 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		}
 	}
 
+	// Private stats
+	if s.PrivateStatsPort != 0 {
+		privateStatsSection := c.Section("frontend private-stats")
+		privateStatsSection.Add(
+			"mode http",
+			fmt.Sprintf("bind 127.0.0.1:%d", s.PrivateStatsPort),
+			"stats enable",
+			"stats uri /",
+		)
+	}
+
 	// Create backends
 	backendNames := []string{}
 	for name, _ := range backends {

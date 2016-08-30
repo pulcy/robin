@@ -45,11 +45,13 @@ VOLUME ["/dev/log"]
 # 82:   Private TCP+SSL
 # 443:  Public HTTPS
 # 7088: Stats HTTPS
+# 8022: Metrics
 EXPOSE 80
 EXPOSE 81
 EXPOSE 82
 EXPOSE 443
 EXPOSE 7088
+EXPOSE 8022
 
 # Start the load-balancer
 ENTRYPOINT ["/app/robin"]

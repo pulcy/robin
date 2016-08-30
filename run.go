@@ -15,6 +15,7 @@
 package main
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path"
@@ -23,6 +24,7 @@ import (
 	"github.com/op/go-logging"
 	"github.com/spf13/cobra"
 
+	"github.com/pulcy/robin/metrics"
 	"github.com/pulcy/robin/service"
 	"github.com/pulcy/robin/service/acme"
 	"github.com/pulcy/robin/service/backend"
@@ -63,6 +65,11 @@ var (
 		privateKeyPath     string
 		registrationPath   string
 		tmpCertificatePath string
+
+		// metrics
+		metricsHost      string
+		metricsPort      int
+		privateStatsPort int
 	}
 )
 
@@ -93,6 +100,10 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.privateKeyPath, "private-key-path", defaultPrivateKeyPath(), "Path of the private key for the registered account")
 	cmdRun.Flags().StringVar(&runArgs.registrationPath, "registration-path", defaultRegistrationPath(), "Path of the registration resource for the registered account")
 	cmdRun.Flags().StringVar(&runArgs.tmpCertificatePath, "tmp-certificate-path", defaultTmpCertificatePath, "Path of obtained tmp certificates")
+
+	cmdRun.Flags().StringVar(&runArgs.metricsHost, "metrics-host", defaultMetricsHost, "Host address to listen for metrics requests")
+	cmdRun.Flags().IntVar(&runArgs.metricsPort, "metrics-port", defaultMetricsPort, "Port to listen for metrics requests")
+	cmdRun.Flags().IntVar(&runArgs.privateStatsPort, "private-stats-port", defaultPrivateStatsPort, "HAProxy port CSV stats")
 
 	cmdMain.AddCommand(cmdRun)
 }
@@ -178,6 +189,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		ForceSsl:          runArgs.forceSsl,
 		PrivateHost:       runArgs.privateHost,
 		PrivateTcpSslCert: runArgs.privateTcpSslCert,
+		PrivateStatsPort:  runArgs.privateStatsPort,
 	}, service.ServiceDependencies{
 		Logger:      log,
 		Backend:     backend,
@@ -188,6 +200,20 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	// Start all services
 	if err := acmeService.Start(); err != nil {
 		Exitf("Failed to start ACME service: %#v", err)
+	}
+	metricsConfig := metrics.MetricsConfig{
+		ProjectName:    projectName,
+		ProjectVersion: projectVersion,
+		ProjectBuild:   projectBuild,
+		Host:           runArgs.metricsHost,
+		Port:           runArgs.metricsPort,
+		HaproxyCSVURI:  fmt.Sprintf("http://127.0.0.1:%d/;csv", runArgs.privateStatsPort),
+	}
+	if runArgs.privateStatsPort == 0 {
+		metricsConfig.HaproxyCSVURI = ""
+	}
+	if err := metrics.StartMetricsListener(metricsConfig, log); err != nil {
+		Exitf("Failed to start metrics: %#v", err)
 	}
 	service.Run()
 }
