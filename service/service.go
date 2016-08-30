@@ -45,6 +45,7 @@ type ServiceConfig struct {
 	StatsUser         string
 	StatsPassword     string
 	StatsSslCert      string
+	PrivateStatsPort  int
 	SslCertsFolder    string
 	ForceSsl          bool
 	PrivateHost       string

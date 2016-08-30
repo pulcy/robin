@@ -16,12 +16,22 @@ type configTest struct {
 }
 
 var (
-	testService = Service{}
+	testService         = Service{}
+	privateStatsService = Service{
+		ServiceConfig: ServiceConfig{
+			PrivateStatsPort: 1234,
+		},
+	}
 	configTests = []configTest{
 		configTest{
 			Service:    testService,
 			Services:   backend.ServiceRegistrations{},
 			ResultPath: "./fixtures/empty.txt",
+		},
+		configTest{
+			Service:    privateStatsService,
+			Services:   backend.ServiceRegistrations{},
+			ResultPath: "./fixtures/empty-private-stats.txt",
 		},
 		configTest{
 			Service: testService,

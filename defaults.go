@@ -42,8 +42,9 @@ const (
 )
 
 const (
-	defaultMetricsHost = "0.0.0.0"
-	defaultMetricsPort = 8022
+	defaultMetricsHost      = "0.0.0.0"
+	defaultMetricsPort      = 8022
+	defaultPrivateStatsPort = 7089
 )
 
 func defaultPrivateKeyPath() string {
