@@ -63,6 +63,10 @@ var (
 		privateKeyPath     string
 		registrationPath   string
 		tmpCertificatePath string
+
+		// metrics
+		metricsHost string
+		metricsPort int
 	}
 )
 
@@ -93,6 +97,9 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.privateKeyPath, "private-key-path", defaultPrivateKeyPath(), "Path of the private key for the registered account")
 	cmdRun.Flags().StringVar(&runArgs.registrationPath, "registration-path", defaultRegistrationPath(), "Path of the registration resource for the registered account")
 	cmdRun.Flags().StringVar(&runArgs.tmpCertificatePath, "tmp-certificate-path", defaultTmpCertificatePath, "Path of obtained tmp certificates")
+
+	cmdRun.Flags().StringVar(&runArgs.metricsHost, "metrics-host", defaultMetricsHost, "Host address to listen for metrics requests")
+	cmdRun.Flags().IntVar(&runArgs.metricsPort, "metrics-port", defaultMetricsPort, "Port to listen for metrics requests")
 
 	cmdMain.AddCommand(cmdRun)
 }
@@ -189,6 +196,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	if err := acmeService.Start(); err != nil {
 		Exitf("Failed to start ACME service: %#v", err)
 	}
+	startMetricsListener(runArgs.metricsHost, runArgs.metricsPort)
 	service.Run()
 }
 
