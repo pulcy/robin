@@ -43,7 +43,7 @@ const (
 
 const (
 	defaultMetricsHost      = "0.0.0.0"
-	defaultMetricsPort      = 8022
+	defaultMetricsPort      = 8055
 	defaultPrivateStatsPort = 7089
 )
 
