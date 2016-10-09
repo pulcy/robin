@@ -21,10 +21,23 @@ var (
 			PrivateHost: "10.0.0.1",
 		},
 	}
+	privateOnlyService = Service{
+		ServiceConfig: ServiceConfig{
+			PrivateHost:   "10.0.0.2",
+			ExcludePublic: true,
+		},
+	}
+	publicOnlyService = Service{
+		ServiceConfig: ServiceConfig{
+			PrivateHost:    "8.8.8.8",
+			ExcludePrivate: true,
+		},
+	}
 	privateStatsService = Service{
 		ServiceConfig: ServiceConfig{
 			PublicHost:       "7.7.7.7",
 			PrivateStatsPort: 1234,
+			ExcludePublic:    true,
 		},
 	}
 	configTests = []configTest{
@@ -39,7 +52,7 @@ var (
 			ResultPath: "./fixtures/empty-private-stats.txt",
 		},
 		configTest{
-			Service: testService,
+			Service: publicOnlyService,
 			Services: backend.ServiceRegistrations{
 				backend.ServiceRegistration{
 					ServiceName: "simple",
@@ -239,7 +252,7 @@ var (
 			ResultPath: "./fixtures/backup_services.txt",
 		},
 		configTest{
-			Service: testService,
+			Service: privateOnlyService,
 			Services: backend.ServiceRegistrations{
 				backend.ServiceRegistration{
 					ServiceName: "private1",

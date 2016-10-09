@@ -159,6 +159,9 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	var frontends frontendList
 	frontendMap := make(map[string]frontend)
 	collectFrontend := func(index, edgePort int, public bool, mode string) {
+		if (public && s.ExcludePublic) || (!public && s.ExcludePrivate) {
+			return // Exclude
+		}
 		f := frontend{
 			index:  index,
 			Port:   edgePort,

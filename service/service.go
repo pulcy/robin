@@ -51,6 +51,8 @@ type ServiceConfig struct {
 	PrivateHost       string
 	PublicHost        string
 	PrivateTcpSslCert string // Name of SSL certificate used for private tcp connections
+	ExcludePublic     bool   // If set, all public frontends are excluded
+	ExcludePrivate    bool   // If set, all private frontends are excluded
 }
 
 type ServiceDependencies struct {
