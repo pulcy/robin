@@ -189,6 +189,11 @@ func (s *Service) createConfigFile() (string, string, error) {
 		return "", "", maskAny(err)
 	}
 
+	// Normalize services
+	for i, s := range services {
+		services[i] = s.Normalize()
+	}
+
 	// Sort the services
 	services.Sort()
 

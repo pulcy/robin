@@ -151,8 +151,8 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 		serviceName := s.ServiceName
 		servicePort := s.ServicePort
 
-		createServiceRegistration := func(edgePort int, public bool, mode string) ServiceRegistration {
-			service := ServiceRegistration{
+		createServiceRegistration := func(edgePort int, public bool, mode string) *ServiceRegistration {
+			service := &ServiceRegistration{
 				ServiceName: serviceName,
 				ServicePort: servicePort,
 				EdgePort:    edgePort,
@@ -186,8 +186,7 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 			key := fmt.Sprintf("%d-%v", edgePort, private)
 			sr, ok := servicesByEdge[key]
 			if !ok {
-				newSR := createServiceRegistration(edgePort, !private, mode)
-				sr = &newSR
+				sr = createServiceRegistration(edgePort, !private, mode)
 				servicesByEdge[key] = sr
 			} else {
 				if sr.Mode != mode {
@@ -245,9 +244,6 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 		}
 		for _, service := range servicesByEdge {
 			if len(service.Selectors) > 0 {
-				if service.Mode == "" {
-					service.Mode = "http"
-				}
 				result = append(result, *service)
 			}
 		}

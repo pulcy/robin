@@ -42,6 +42,13 @@ type ServiceRegistration struct {
 	Backup          bool             // If set all instances are backup only servers for their selectors
 }
 
+func (sr ServiceRegistration) Normalize() ServiceRegistration {
+	if sr.Mode == "" {
+		sr.Mode = "http"
+	}
+	return sr
+}
+
 func (sr ServiceRegistration) FullString() string {
 	return fmt.Sprintf("%s-%d-%s-%s-%s-%s-%s-%v-%v",
 		sr.ServiceName,
