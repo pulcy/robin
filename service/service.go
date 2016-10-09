@@ -49,6 +49,7 @@ type ServiceConfig struct {
 	SslCertsFolder    string
 	ForceSsl          bool
 	PrivateHost       string
+	PublicHost        string
 	PrivateTcpSslCert string // Name of SSL certificate used for private tcp connections
 }
 

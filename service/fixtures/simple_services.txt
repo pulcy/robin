@@ -32,7 +32,7 @@ frontend public_http_in_80
     use_backend backend_simple2_5000_public_http_in_80 if acl3
 
 frontend private_http_in_81
-    bind *:81
+    bind 10.0.0.1:81
     mode http
     option forwardfor
     reqadd X-Forwarded-Port:\ %[dst_port]

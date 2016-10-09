@@ -71,6 +71,7 @@ type useBlock struct {
 }
 
 type frontend struct {
+	index  int // Used for sorting only
 	Port   int
 	Public bool
 	Mode   string
@@ -81,6 +82,27 @@ func (f frontend) Name() string {
 		return fmt.Sprintf("public_%s_in_%d", f.Mode, f.Port)
 	}
 	return fmt.Sprintf("private_%s_in_%d", f.Mode, f.Port)
+}
+
+type frontendList []frontend
+
+func (l frontendList) Len() int { return len(l) }
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (l frontendList) Less(i, j int) bool {
+	if l[i].index < l[j].index {
+		return true
+	}
+	if l[i].index > l[j].index {
+		return false
+	}
+	return l[i].Name() < l[j].Name()
+}
+
+// Swap swaps the elements with indexes i and j.
+func (l frontendList) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
 }
 
 // IsHTTP returns true if Mode == "http"
@@ -134,27 +156,43 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	}
 
 	// Collect frontends
-	frontends := make(map[string]frontend)
-	collectFrontend := func(edgePort int, public bool, mode string) {
+	var frontends frontendList
+	frontendMap := make(map[string]frontend)
+	collectFrontend := func(index, edgePort int, public bool, mode string) {
 		f := frontend{
+			index:  index,
 			Port:   edgePort,
 			Public: public,
 			Mode:   mode,
 		}
-		frontends[f.Name()] = f
+		if _, ok := frontendMap[f.Name()]; !ok {
+			frontendMap[f.Name()] = f
+			frontends = append(frontends, f)
+		}
 	}
-	collectFrontend(PublicHttpPort, true, "http")   // Always create a public HTTP frontend
-	collectFrontend(PrivateHttpPort, false, "http") // Always create a private HTTP frontend
+	collectFrontend(0, PublicHttpPort, true, "http")   // Always create a public HTTP frontend
+	collectFrontend(1, PrivateHttpPort, false, "http") // Always create a private HTTP frontend
 	for _, sr := range services {
-		collectFrontend(sr.EdgePort, sr.Public, sr.Mode)
+		collectFrontend(2, sr.EdgePort, sr.Public, sr.Mode)
 	}
+	sort.Sort(frontends)
 
 	// Create all frontends
 	aclNameGen := NewNameGenerator("acl")
 	backends := make(map[string]backendConfig)
 	for _, frontend := range frontends {
 		frontendSection := c.Section(fmt.Sprintf("frontend %s", frontend.Name()))
-		bind := fmt.Sprintf("bind *:%d", frontend.Port) // TODO bind interface depending on frontend.Public
+		host := "*"
+		if frontend.Public {
+			if s.PublicHost != "" {
+				host = s.PublicHost
+			}
+		} else {
+			if s.PrivateHost != "" {
+				host = s.PrivateHost
+			}
+		}
+		bind := fmt.Sprintf("bind %s:%d", host, frontend.Port)
 		if !frontend.Public && frontend.IsTCP() && frontend.Port == PrivateTcpSslPort && s.PrivateTcpSslCert != "" {
 			bind = fmt.Sprintf("%s ssl generate-certificates ca-sign-file %s crt %s no-sslv3",
 				bind,
@@ -168,7 +206,7 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		if frontend.Public && frontend.Port == PublicHttpPort && frontend.IsHTTP() && len(certs) > 0 {
 			secureFrontendSection = c.Section(fmt.Sprintf("frontend secure-%s", frontend.Name()))
 			frontendSections = append(frontendSections, secureFrontendSection)
-			secureFrontendSection.Add(fmt.Sprintf("bind *:%d ssl %s no-sslv3", PublicHttpsPort, strings.Join(certs, " ")))
+			secureFrontendSection.Add(fmt.Sprintf("bind %s:%d ssl %s no-sslv3", host, PublicHttpsPort, strings.Join(certs, " ")))
 			if s.ForceSsl {
 				secureFrontendSection.Add("redirect scheme https if !{ ssl_fc }")
 			}

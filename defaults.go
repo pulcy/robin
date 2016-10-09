@@ -30,6 +30,7 @@ const (
 	defaultSslCertsFolder    = "/certs/"
 	defaultForceSsl          = false
 	defaultPrivateHost       = ""
+	defaultPublicHost        = ""
 	defaultPrivateTcpSslCert = ""
 	defaultLogLevel          = "info"
 )

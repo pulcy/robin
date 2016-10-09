@@ -55,6 +55,7 @@ var (
 		sslCertsFolder    string
 		forceSsl          bool
 		privateHost       string
+		publicHost        string
 		privateTcpSslCert string
 
 		// acme
@@ -91,6 +92,7 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.sslCertsFolder, "ssl-certs", defaultSslCertsFolder, "Folder containing SSL certificate")
 	cmdRun.Flags().BoolVar(&runArgs.forceSsl, "force-ssl", defaultForceSsl, "Redirect HTTP to HTTPS")
 	cmdRun.Flags().StringVar(&runArgs.privateHost, "private-host", defaultPrivateHost, "IP address of private network")
+	cmdRun.Flags().StringVar(&runArgs.publicHost, "public-host", defaultPublicHost, "IP address of public network")
 	cmdRun.Flags().StringVar(&runArgs.privateTcpSslCert, "private-ssl-cert", defaultPrivateTcpSslCert, "Filename of SSL certificate for private TCP connections (located in ssl-certs)")
 	// acme
 	cmdRun.Flags().IntVar(&runArgs.acmeHttpPort, "acme-http-port", defaultAcmeHttpPort, "Port to listen for ACME HTTP challenges on (internally)")

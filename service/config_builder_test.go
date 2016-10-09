@@ -16,9 +16,14 @@ type configTest struct {
 }
 
 var (
-	testService         = Service{}
+	testService = Service{
+		ServiceConfig: ServiceConfig{
+			PrivateHost: "10.0.0.1",
+		},
+	}
 	privateStatsService = Service{
 		ServiceConfig: ServiceConfig{
+			PublicHost:       "7.7.7.7",
 			PrivateStatsPort: 1234,
 		},
 	}
