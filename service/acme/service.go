@@ -25,6 +25,7 @@ import (
 const (
 	acmeServiceName = "__acme"
 	acmeServicePort = 0
+	publicHttpPort  = 80
 )
 
 type AcmeServiceListener interface {
@@ -173,7 +174,7 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 	updatedServices := backend.ServiceRegistrations{}
 	for _, sr := range services {
 		for selIndex, sel := range sr.Selectors {
-			if sel.Private || sel.SslCertName != "" || sel.Domain == "" {
+			if !sr.Public || sel.SslCertName != "" || sel.Domain == "" {
 				continue
 			}
 			// Domain needs a certificate, try cache first
@@ -225,6 +226,8 @@ func (s *acmeService) createAcmeServiceRegistration() backend.ServiceRegistratio
 	sr := backend.ServiceRegistration{
 		ServiceName: acmeServiceName,
 		ServicePort: acmeServicePort,
+		EdgePort:    publicHttpPort,
+		Public:      true,
 		Instances: backend.ServiceInstances{
 			backend.ServiceInstance{
 				IP:   "127.0.0.1",
@@ -236,7 +239,6 @@ func (s *acmeService) createAcmeServiceRegistration() backend.ServiceRegistratio
 				AllowUnauthorized: true,
 				Weight:            100,
 				PathPrefix:        pathPrefix,
-				Private:           false,
 			},
 		},
 		HttpCheckPath: "",

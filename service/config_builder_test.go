@@ -16,10 +16,28 @@ type configTest struct {
 }
 
 var (
-	testService         = Service{}
+	testService = Service{
+		ServiceConfig: ServiceConfig{
+			PrivateHost: "10.0.0.1",
+		},
+	}
+	privateOnlyService = Service{
+		ServiceConfig: ServiceConfig{
+			PrivateHost:   "10.0.0.2",
+			ExcludePublic: true,
+		},
+	}
+	publicOnlyService = Service{
+		ServiceConfig: ServiceConfig{
+			PrivateHost:    "8.8.8.8",
+			ExcludePrivate: true,
+		},
+	}
 	privateStatsService = Service{
 		ServiceConfig: ServiceConfig{
+			PublicHost:       "7.7.7.7",
 			PrivateStatsPort: 1234,
+			ExcludePublic:    true,
 		},
 	}
 	configTests = []configTest{
@@ -34,11 +52,13 @@ var (
 			ResultPath: "./fixtures/empty-private-stats.txt",
 		},
 		configTest{
-			Service: testService,
+			Service: publicOnlyService,
 			Services: backend.ServiceRegistrations{
 				backend.ServiceRegistration{
 					ServiceName: "simple",
 					ServicePort: 80,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
@@ -59,6 +79,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "simple12",
 					ServicePort: 80,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
@@ -73,6 +95,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "simple2",
 					ServicePort: 5000,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 7001},
 					},
@@ -86,6 +110,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "simple3",
 					ServicePort: 5000,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 7001},
 					},
@@ -106,6 +132,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "service1",
 					ServicePort: 80,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
@@ -120,6 +148,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "service2",
 					ServicePort: 5000,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 7001},
 						backend.ServiceInstance{IP: "192.168.23.1", Port: 7005},
@@ -135,6 +165,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "service3_prefix",
 					ServicePort: 4700,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 7001},
 					},
@@ -149,6 +181,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "service4_small_prefix_only",
 					ServicePort: 4700,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 9001},
 					},
@@ -162,6 +196,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "service4_large_prefix_only",
 					ServicePort: 6004,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.33", Port: 19001},
 					},
@@ -181,6 +217,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "master",
 					ServicePort: 80,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
@@ -196,6 +234,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "slave",
 					ServicePort: 5000,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.35", Port: 7001},
 						backend.ServiceInstance{IP: "192.168.35.37", Port: 7007},
@@ -212,19 +252,20 @@ var (
 			ResultPath: "./fixtures/backup_services.txt",
 		},
 		configTest{
-			Service: testService,
+			Service: privateOnlyService,
 			Services: backend.ServiceRegistrations{
 				backend.ServiceRegistration{
 					ServiceName: "private1",
 					ServicePort: 80,
+					Public:      false,
+					EdgePort:    PrivateHttpPort,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
 					},
 					Selectors: backend.ServiceSelectors{
 						backend.ServiceSelector{
-							Domain:  "service1.private",
-							Private: true,
+							Domain: "service1.private",
 						},
 					},
 					Mode: "http",
@@ -238,6 +279,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "service1",
 					ServicePort: 80,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
@@ -251,13 +294,25 @@ var (
 							Domain:     "nested.foo.com",
 							PathPrefix: "/foo",
 						},
+					},
+					Mode: "http",
+				},
+				backend.ServiceRegistration{
+					ServiceName: "service1",
+					ServicePort: 80,
+					EdgePort:    PrivateHttpPort,
+					Public:      false,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+						backend.ServiceInstance{IP: "192.168.23.32", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
 						backend.ServiceSelector{
-							Domain:  "foo.com.private",
-							Private: true,
+							Domain: "foo.com.private",
 						},
 						backend.ServiceSelector{
-							Domain:  "service1.private",
-							Private: true,
+							Domain: "service1.private",
 						},
 					},
 					Mode: "http",
@@ -271,6 +326,8 @@ var (
 				backend.ServiceRegistration{
 					ServiceName: "sticky1",
 					ServicePort: 80,
+					EdgePort:    PublicHttpPort,
+					Public:      true,
 					Instances: backend.ServiceInstances{
 						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
 						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
@@ -286,6 +343,28 @@ var (
 				},
 			},
 			ResultPath: "./fixtures/sticky_service.txt",
+		},
+		configTest{
+			Service: testService,
+			Services: backend.ServiceRegistrations{
+				backend.ServiceRegistration{
+					ServiceName: "gogs",
+					ServicePort: 22,
+					EdgePort:    8022,
+					Public:      true,
+					Instances: backend.ServiceInstances{
+						backend.ServiceInstance{IP: "192.168.35.2", Port: 2345},
+						backend.ServiceInstance{IP: "192.168.35.3", Port: 2346},
+						backend.ServiceInstance{IP: "192.168.23.32", Port: 2346},
+					},
+					Selectors: backend.ServiceSelectors{
+						backend.ServiceSelector{},
+					},
+					Sticky: true,
+					Mode:   "tcp",
+				},
+			},
+			ResultPath: "./fixtures/ssh_gogs.txt",
 		},
 	}
 )

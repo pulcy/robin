@@ -17,7 +17,7 @@ defaults
     errorfile 503 /app/errors/503.http
     errorfile 504 /app/errors/504.http
 
-frontend http-in
+frontend public_http_in_80
     bind *:80
     mode http
     option forwardfor
@@ -25,17 +25,9 @@ frontend http-in
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     default_backend fallback
     acl acl1 hdr_dom(host) -i foo.com
-    use_backend backend_simple_80_public if acl1
+    use_backend backend_simple_80_public_http_in_80 if acl1
 
-frontend http-in-private
-    bind *:81
-    mode http
-    option forwardfor
-    reqadd X-Forwarded-Port:\ %[dst_port]
-    reqadd X-Forwarded-Proto:\ https if { ssl_fc }
-    default_backend fallback
-
-backend backend_simple_80_public
+backend backend_simple_80_public_http_in_80
     balance roundrobin
     mode http
     http-response set-header Strict-Transport-Security max-age=63072000

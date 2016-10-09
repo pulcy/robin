@@ -16,6 +16,8 @@ package main
 
 import (
 	"github.com/mitchellh/go-homedir"
+	"github.com/pulcy/robin/service"
+	"github.com/pulcy/robin/service/backend"
 )
 
 const (
@@ -28,6 +30,7 @@ const (
 	defaultSslCertsFolder    = "/certs/"
 	defaultForceSsl          = false
 	defaultPrivateHost       = ""
+	defaultPublicHost        = ""
 	defaultPrivateTcpSslCert = ""
 	defaultLogLevel          = "info"
 )
@@ -45,6 +48,14 @@ const (
 	defaultMetricsHost      = "0.0.0.0"
 	defaultMetricsPort      = 8055
 	defaultPrivateStatsPort = 7089
+)
+
+var (
+	etcdBackendConfig = backend.BackendConfig{
+		PublicEdgePort:      service.PublicHttpPort,
+		PrivateHttpEdgePort: service.PrivateHttpPort,
+		PrivateTcpEdgePort:  service.PrivateTcpSslPort,
+	}
 )
 
 func defaultPrivateKeyPath() string {

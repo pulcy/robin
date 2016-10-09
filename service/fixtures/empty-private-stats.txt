@@ -17,15 +17,7 @@ defaults
     errorfile 503 /app/errors/503.http
     errorfile 504 /app/errors/504.http
 
-frontend http-in
-    bind *:80
-    mode http
-    option forwardfor
-    reqadd X-Forwarded-Port:\ %[dst_port]
-    reqadd X-Forwarded-Proto:\ https if { ssl_fc }
-    default_backend fallback
-
-frontend http-in-private
+frontend private_http_in_81
     bind *:81
     mode http
     option forwardfor

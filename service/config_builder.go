@@ -24,6 +24,13 @@ import (
 	"github.com/pulcy/robin/service/backend"
 )
 
+const (
+	PublicHttpPort    = 80
+	PublicHttpsPort   = 443
+	PrivateHttpPort   = 81
+	PrivateTcpSslPort = 82
+)
+
 var (
 	globalOptions = []string{
 		//"log global",
@@ -63,9 +70,49 @@ type useBlock struct {
 	RewriteRules      []backend.RewriteRule
 }
 
-type selection struct {
-	Private bool
-	Http    bool
+type frontend struct {
+	index  int // Used for sorting only
+	Port   int
+	Public bool
+	Mode   string
+}
+
+func (f frontend) Name() string {
+	if f.Public {
+		return fmt.Sprintf("public_%s_in_%d", f.Mode, f.Port)
+	}
+	return fmt.Sprintf("private_%s_in_%d", f.Mode, f.Port)
+}
+
+type frontendList []frontend
+
+func (l frontendList) Len() int { return len(l) }
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (l frontendList) Less(i, j int) bool {
+	if l[i].index < l[j].index {
+		return true
+	}
+	if l[i].index > l[j].index {
+		return false
+	}
+	return l[i].Name() < l[j].Name()
+}
+
+// Swap swaps the elements with indexes i and j.
+func (l frontendList) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
+
+// IsHTTP returns true if Mode == "http"
+func (f frontend) IsHTTP() bool {
+	return f.Mode == "http"
+}
+
+// IsTCP returns true if Mode == "tcp"
+func (f frontend) IsTCP() bool {
+	return f.Mode == "tcp"
 }
 
 // renderConfig creates a new haproxy configuration content.
@@ -91,91 +138,102 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 	certs := []string{}
 	certsSet := make(map[string]struct{})
 	for _, sr := range services {
-		for _, sel := range sr.Selectors {
-			if !sel.Private && sel.IsSecure() {
-				certPath := sel.TmpSslCertPath
-				if certPath == "" {
-					certPath = filepath.Join(s.SslCertsFolder, sel.SslCertName)
-				}
-				if _, ok := certsSet[certPath]; !ok {
-					crt := fmt.Sprintf("crt %s", certPath)
-					certs = append(certs, crt)
-					certsSet[certPath] = struct{}{}
+		if sr.Public {
+			for _, sel := range sr.Selectors {
+				if sel.IsSecure() {
+					certPath := sel.TmpSslCertPath
+					if certPath == "" {
+						certPath = filepath.Join(s.SslCertsFolder, sel.SslCertName)
+					}
+					if _, ok := certsSet[certPath]; !ok {
+						crt := fmt.Sprintf("crt %s", certPath)
+						certs = append(certs, crt)
+						certsSet[certPath] = struct{}{}
+					}
 				}
 			}
 		}
 	}
 
-	// Create config for all registrations
-	publicHttpFrontEndSection := c.Section("frontend http-in")
-	publicHttpFrontEndSection.Add("bind *:80")
-	var publicHttpsFrontEndSection *haproxy.Section
-	publicFrontEndSections := []*haproxy.Section{publicHttpFrontEndSection}
-	if len(certs) > 0 {
-		publicHttpsFrontEndSection = c.Section("frontend https-in")
-		publicFrontEndSections = append(publicFrontEndSections, publicHttpsFrontEndSection)
-		publicHttpsFrontEndSection.Add(
-			fmt.Sprintf("bind *:443 ssl %s no-sslv3", strings.Join(certs, " ")),
-		)
-		if s.ForceSsl {
-			publicHttpFrontEndSection.Add("redirect scheme https if !{ ssl_fc }")
+	// Collect frontends
+	var frontends frontendList
+	frontendMap := make(map[string]frontend)
+	collectFrontend := func(index, edgePort int, public bool, mode string) {
+		if (public && s.ExcludePublic) || (!public && s.ExcludePrivate) {
+			return // Exclude
+		}
+		f := frontend{
+			index:  index,
+			Port:   edgePort,
+			Public: public,
+			Mode:   mode,
+		}
+		if _, ok := frontendMap[f.Name()]; !ok {
+			frontendMap[f.Name()] = f
+			frontends = append(frontends, f)
 		}
 	}
-	for _, section := range publicFrontEndSections {
-		section.Add(
-			"mode http",
-			"option forwardfor",
-			//"option httplog",
-			"reqadd X-Forwarded-Port:\\ %[dst_port]",
-			"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
-			"default_backend fallback",
-		)
+	collectFrontend(0, PublicHttpPort, true, "http")   // Always create a public HTTP frontend
+	collectFrontend(1, PrivateHttpPort, false, "http") // Always create a private HTTP frontend
+	for _, sr := range services {
+		collectFrontend(2, sr.EdgePort, sr.Public, sr.Mode)
 	}
+	sort.Sort(frontends)
+
+	// Create all frontends
 	aclNameGen := NewNameGenerator("acl")
 	backends := make(map[string]backendConfig)
-	// Create acls
-	publicFrontEndSelection := selection{Private: false, Http: true}
-	useBlocks, backends := createAcls(publicFrontEndSections, services, publicFrontEndSelection, aclNameGen, backends)
-	// Create link to backends
-	createUseBackends(publicHttpFrontEndSection, useBlocks, publicFrontEndSelection, (publicHttpsFrontEndSection != nil))
-	if publicHttpsFrontEndSection != nil {
-		createUseBackends(publicHttpsFrontEndSection, useBlocks, publicFrontEndSelection, false)
-	}
-
-	// Create config for private HTTP services
-	privateFrontEndSection := c.Section("frontend http-in-private")
-	privateFrontEndSection.Add("bind *:81")
-	privateFrontEndSection.Add(
-		"mode http",
-		"option forwardfor",
-		//"option httplog",
-		"reqadd X-Forwarded-Port:\\ %[dst_port]",
-		"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
-		"default_backend fallback",
-	)
-	// Create acls
-	privateFrontEndSelection := selection{Private: true, Http: true}
-	useBlocks, backends = createAcls([]*haproxy.Section{privateFrontEndSection}, services, privateFrontEndSelection, aclNameGen, backends)
-	// Create link to backend
-	createUseBackends(privateFrontEndSection, useBlocks, privateFrontEndSelection, false)
-
-	// Create config for private TCP services
-	if s.PrivateTcpSslCert != "" {
-		privateTcpFrontEndSection := c.Section("frontend tcp-in-private")
-		privateTcpSsl := fmt.Sprintf("ssl generate-certificates ca-sign-file %s crt %s no-sslv3",
-			filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
-			filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
-		)
-		privateTcpFrontEndSection.Add("bind *:82 " + privateTcpSsl)
-		privateTcpFrontEndSection.Add(
-			"mode tcp",
-			"default_backend fallback",
-		)
+	for _, frontend := range frontends {
+		frontendSection := c.Section(fmt.Sprintf("frontend %s", frontend.Name()))
+		host := "*"
+		if frontend.Public {
+			if s.PublicHost != "" {
+				host = s.PublicHost
+			}
+		} else {
+			if s.PrivateHost != "" {
+				host = s.PrivateHost
+			}
+		}
+		bind := fmt.Sprintf("bind %s:%d", host, frontend.Port)
+		if !frontend.Public && frontend.IsTCP() && frontend.Port == PrivateTcpSslPort && s.PrivateTcpSslCert != "" {
+			bind = fmt.Sprintf("%s ssl generate-certificates ca-sign-file %s crt %s no-sslv3",
+				bind,
+				filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
+				filepath.Join(s.SslCertsFolder, s.PrivateTcpSslCert),
+			)
+		}
+		frontendSection.Add(bind)
+		var secureFrontendSection *haproxy.Section
+		frontendSections := []*haproxy.Section{frontendSection}
+		if frontend.Public && frontend.Port == PublicHttpPort && frontend.IsHTTP() && len(certs) > 0 {
+			secureFrontendSection = c.Section(fmt.Sprintf("frontend secure-%s", frontend.Name()))
+			frontendSections = append(frontendSections, secureFrontendSection)
+			secureFrontendSection.Add(fmt.Sprintf("bind %s:%d ssl %s no-sslv3", host, PublicHttpsPort, strings.Join(certs, " ")))
+			if s.ForceSsl {
+				secureFrontendSection.Add("redirect scheme https if !{ ssl_fc }")
+			}
+		}
+		for _, section := range frontendSections {
+			section.Add(fmt.Sprintf("mode %s", frontend.Mode))
+			if frontend.IsHTTP() {
+				section.Add(
+					"option forwardfor",
+					//"option httplog",
+					"reqadd X-Forwarded-Port:\\ %[dst_port]",
+					"reqadd X-Forwarded-Proto:\\ https if { ssl_fc }",
+				)
+			}
+			section.Add("default_backend fallback")
+		}
 		// Create acls
-		privateTcpFrontEndSelection := selection{Private: true, Http: false}
-		useBlocks, backends = createAcls([]*haproxy.Section{privateTcpFrontEndSection}, services, privateTcpFrontEndSelection, aclNameGen, backends)
-		// Create link to backend
-		createUseBackends(privateTcpFrontEndSection, useBlocks, privateTcpFrontEndSelection, false)
+		var useBlocks []useBlock
+		useBlocks, backends = createAcls(frontendSections, services, frontend, aclNameGen, backends)
+		// Create link to backends
+		createUseBackends(frontendSection, useBlocks, frontend, (secureFrontendSection != nil))
+		if secureFrontendSection != nil {
+			createUseBackends(secureFrontendSection, useBlocks, frontend, false)
+		}
 	}
 
 	// Create stats section
@@ -302,23 +360,24 @@ func createAclRules(sel backend.ServiceSelector, isTcp bool) []string {
 	if sel.PathPrefix != "" {
 		result = append(result, fmt.Sprintf("path_beg %s", sel.PathPrefix))
 	}
+	if len(result) == 0 && isTcp {
+		result = append(result, "always_true")
+	}
 	return result
 }
 
 // creteAcls create `acl` rules for the given services and adds them
 // to the given section
-func createAcls(sections []*haproxy.Section, services backend.ServiceRegistrations, selection selection, ng *nameGenerator, backends map[string]backendConfig) ([]useBlock, map[string]backendConfig) {
+func createAcls(sections []*haproxy.Section, services backend.ServiceRegistrations, selection frontend, ng *nameGenerator, backends map[string]backendConfig) ([]useBlock, map[string]backendConfig) {
 	pairs := selectorServicePairs{}
 	for _, sr := range services {
-		if sr.IsHttp() == selection.Http {
+		if sr.IsHttp() == selection.IsHTTP() && sr.Public == selection.Public {
 			for selIndex, sel := range sr.Selectors {
-				if sel.Private == selection.Private {
-					pairs = append(pairs, selectorServicePair{
-						Selector:      sel,
-						SelectorIndex: selIndex,
-						Service:       sr,
-					})
-				}
+				pairs = append(pairs, selectorServicePair{
+					Selector:      sel,
+					SelectorIndex: selIndex,
+					Service:       sr,
+				})
 			}
 		}
 	}
@@ -378,7 +437,7 @@ func createAcls(sections []*haproxy.Section, services backend.ServiceRegistratio
 
 // createUseBackends creates a `use_backend` rules for the given input
 // and adds it to the given section
-func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection selection, redirectHttps bool) {
+func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection frontend, redirectHttps bool) {
 	for _, useBlock := range useBlocks {
 		if len(useBlock.AclNames) == 0 {
 			continue
@@ -422,8 +481,8 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 
 // generateBackendName creates a valid name for the backend of this registration
 // in haproxy.
-func generateBackendName(sr backend.ServiceRegistration, selection selection) string {
-	return fmt.Sprintf("backend_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, visibilityPostfix(selection))
+func generateBackendName(sr backend.ServiceRegistration, selection frontend) string {
+	return fmt.Sprintf("backend_%s_%d_%s", cleanName(sr.ServiceName), sr.ServicePort, selection.Name())
 }
 
 // userListName creates a valid name for the userlist of this registration
@@ -437,16 +496,16 @@ func cleanName(s string) string {
 	return s // TODO
 }
 
-func visibilityPostfix(selection selection) string {
-	if selection.Private {
-		if selection.Http {
+/*func visibilityPostfix_(selection frontend) string {
+	if !selection.Public {
+		if selection.IsHttp() {
 			return "private"
 		} else {
 			return "private-tcp"
 		}
 	}
 	return "public"
-}
+}*/
 
 type selectorServicePair struct {
 	Selector      backend.ServiceSelector

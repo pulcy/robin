@@ -33,6 +33,20 @@ frontend private_http_in_81
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     default_backend fallback
 
+frontend public_tcp_in_8022
+    bind *:8022
+    mode tcp
+    default_backend fallback
+    acl acl1 true
+    use_backend backend_gogs_22_public_tcp_in_8022 if acl1
+
+backend backend_gogs_22_public_tcp_in_8022
+    balance source
+    mode tcp
+    server s0-192_168_35_2-2345 192.168.35.2:2345 
+    server s1-192_168_35_3-2346 192.168.35.3:2346 
+    server s2-192_168_23_32-2346 192.168.23.32:2346 
+
 backend fallback
     mode http
     balance roundrobin

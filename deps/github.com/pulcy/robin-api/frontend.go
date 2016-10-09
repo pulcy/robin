@@ -29,7 +29,8 @@ type FrontendSelectorRecord struct {
 	Domain       string        `json:"domain,omitempty"`
 	PathPrefix   string        `json:"path-prefix,omitempty"`
 	SslCert      string        `json:"ssl-cert,omitempty"`
-	Port         int           `json:"port,omitempty"`
+	ServicePort  int           `json:"port,omitempty"`
+	FrontendPort int           `json:"frontend-port,omitempty"`
 	Private      bool          `json:"private,omitempty"`
 	Users        []UserRecord  `json:"users,omitempty"`
 	RewriteRules []RewriteRule `json:"rewrite-rules,omitempty"`

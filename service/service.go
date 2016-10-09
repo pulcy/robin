@@ -49,7 +49,10 @@ type ServiceConfig struct {
 	SslCertsFolder    string
 	ForceSsl          bool
 	PrivateHost       string
+	PublicHost        string
 	PrivateTcpSslCert string // Name of SSL certificate used for private tcp connections
+	ExcludePublic     bool   // If set, all public frontends are excluded
+	ExcludePrivate    bool   // If set, all private frontends are excluded
 }
 
 type ServiceDependencies struct {
@@ -184,6 +187,11 @@ func (s *Service) createConfigFile() (string, string, error) {
 	services, err = s.AcmeService.Extend(services)
 	if err != nil {
 		return "", "", maskAny(err)
+	}
+
+	// Normalize services
+	for i, s := range services {
+		services[i] = s.Normalize()
 	}
 
 	// Sort the services

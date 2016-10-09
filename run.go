@@ -55,7 +55,10 @@ var (
 		sslCertsFolder    string
 		forceSsl          bool
 		privateHost       string
+		publicHost        string
 		privateTcpSslCert string
+		excludePublic     bool
+		excludePrivate    bool
 
 		// acme
 		acmeHttpPort       int
@@ -91,7 +94,10 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.sslCertsFolder, "ssl-certs", defaultSslCertsFolder, "Folder containing SSL certificate")
 	cmdRun.Flags().BoolVar(&runArgs.forceSsl, "force-ssl", defaultForceSsl, "Redirect HTTP to HTTPS")
 	cmdRun.Flags().StringVar(&runArgs.privateHost, "private-host", defaultPrivateHost, "IP address of private network")
+	cmdRun.Flags().StringVar(&runArgs.publicHost, "public-host", defaultPublicHost, "IP address of public network")
 	cmdRun.Flags().StringVar(&runArgs.privateTcpSslCert, "private-ssl-cert", defaultPrivateTcpSslCert, "Filename of SSL certificate for private TCP connections (located in ssl-certs)")
+	cmdRun.Flags().BoolVar(&runArgs.excludePrivate, "exclude-private", false, "Exclude private frontends")
+	cmdRun.Flags().BoolVar(&runArgs.excludePublic, "exclude-public", false, "Exclude public frontends")
 	// acme
 	cmdRun.Flags().IntVar(&runArgs.acmeHttpPort, "acme-http-port", defaultAcmeHttpPort, "Port to listen for ACME HTTP challenges on (internally)")
 	cmdRun.Flags().StringVar(&runArgs.acmeEmail, "acme-email", defaultAcmeEmail, "Email account for ACME server")
@@ -134,7 +140,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	logging.SetLevel(level, cmdMain.Use)
 
 	// Prepare backend
-	backend, err := backend.NewEtcdBackend(log, etcdUrl)
+	backend, err := backend.NewEtcdBackend(etcdBackendConfig, log, etcdUrl)
 	if err != nil {
 		Exitf("Failed to backend: %#v", err)
 	}
@@ -190,6 +196,8 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		PrivateHost:       runArgs.privateHost,
 		PrivateTcpSslCert: runArgs.privateTcpSslCert,
 		PrivateStatsPort:  runArgs.privateStatsPort,
+		ExcludePrivate:    runArgs.excludePrivate,
+		ExcludePublic:     runArgs.excludePublic,
 	}, service.ServiceDependencies{
 		Logger:      log,
 		Backend:     backend,
