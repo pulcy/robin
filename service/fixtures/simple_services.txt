@@ -17,7 +17,7 @@ defaults
     errorfile 503 /app/errors/503.http
     errorfile 504 /app/errors/504.http
 
-frontend http-in
+frontend public_http_in_80
     bind *:80
     mode http
     option forwardfor
@@ -27,11 +27,11 @@ frontend http-in
     acl acl1 path_beg /prefix
     acl acl2 hdr_dom(host) -i foo.com
     acl acl3 hdr_dom(host) -i foo2.com
-    use_backend backend_simple3_5000_public if acl1
-    use_backend backend_simple12_80_public if acl2
-    use_backend backend_simple2_5000_public if acl3
+    use_backend backend_simple3_5000_public_http_in_80 if acl1
+    use_backend backend_simple12_80_public_http_in_80 if acl2
+    use_backend backend_simple2_5000_public_http_in_80 if acl3
 
-frontend http-in-private
+frontend private_http_in_81
     bind *:81
     mode http
     option forwardfor
@@ -39,7 +39,7 @@ frontend http-in-private
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     default_backend fallback
 
-backend backend_simple12_80_public
+backend backend_simple12_80_public_http_in_80
     balance roundrobin
     mode http
     http-response set-header Strict-Transport-Security max-age=63072000
@@ -49,7 +49,7 @@ backend backend_simple12_80_public
     server s0-192_168_35_2-2345 192.168.35.2:2345 
     server s1-192_168_35_3-2346 192.168.35.3:2346 
 
-backend backend_simple2_5000_public
+backend backend_simple2_5000_public_http_in_80
     balance roundrobin
     mode http
     http-response set-header Strict-Transport-Security max-age=63072000
@@ -58,7 +58,7 @@ backend backend_simple2_5000_public
     http-response set-header X-Content-Type-Options nosniff
     server s0-192_168_35_3-7001 192.168.35.3:7001 
 
-backend backend_simple3_5000_public
+backend backend_simple3_5000_public_http_in_80
     balance roundrobin
     mode http
     http-response set-header Strict-Transport-Security max-age=63072000

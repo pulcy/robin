@@ -33,7 +33,14 @@ const (
 	recentWatchErrorsMax = 5
 )
 
+type BackendConfig struct {
+	PublicEdgePort      int
+	PrivateHttpEdgePort int
+	PrivateTcpEdgePort  int
+}
+
 type etcdBackend struct {
+	config            BackendConfig
 	client            client.Client
 	watcher           client.Watcher
 	registratorAPI    regapi.API
@@ -42,7 +49,7 @@ type etcdBackend struct {
 	recentWatchErrors int
 }
 
-func NewEtcdBackend(logger *logging.Logger, uri *url.URL) (Backend, error) {
+func NewEtcdBackend(config BackendConfig, logger *logging.Logger, uri *url.URL) (Backend, error) {
 	cfg := client.Config{
 		Transport: client.DefaultTransport,
 	}
@@ -63,6 +70,7 @@ func NewEtcdBackend(logger *logging.Logger, uri *url.URL) (Backend, error) {
 	}
 	watcher := kAPI.Watcher(uri.Path, options)
 	return &etcdBackend{
+		config:         config,
 		client:         c,
 		watcher:        watcher,
 		registratorAPI: registratorAPI,
@@ -140,46 +148,82 @@ func (eb *etcdBackend) readFrontEndsTree() ([]api.FrontendRecord, error) {
 func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.FrontendRecord) (ServiceRegistrations, error) {
 	result := ServiceRegistrations{}
 	for _, s := range services {
-		service := ServiceRegistration{
-			ServiceName: s.ServiceName,
-			ServicePort: s.ServicePort,
+		serviceName := s.ServiceName
+		servicePort := s.ServicePort
+
+		createServiceRegistration := func(edgePort int, public bool, mode string) ServiceRegistration {
+			service := ServiceRegistration{
+				ServiceName: serviceName,
+				ServicePort: servicePort,
+				EdgePort:    edgePort,
+				Public:      public,
+				Mode:        mode,
+			}
+			for _, si := range s.Instances {
+				service.Instances = append(service.Instances, ServiceInstance{
+					IP:   si.IP,
+					Port: si.Port,
+				})
+			}
+			return service
 		}
-		for _, si := range s.Instances {
-			service.Instances = append(service.Instances, ServiceInstance{
-				IP:   si.IP,
-				Port: si.Port,
-			})
+		servicesByEdge := make(map[string]*ServiceRegistration)
+		getServiceRegistration := func(edgePort int, private bool, mode string) *ServiceRegistration {
+			if mode == "" {
+				mode = "http"
+			}
+			if edgePort == 0 {
+				if private {
+					if mode == "http" {
+						edgePort = eb.config.PrivateHttpEdgePort
+					} else {
+						edgePort = eb.config.PrivateTcpEdgePort
+					}
+				} else {
+					edgePort = eb.config.PublicEdgePort
+				}
+			}
+			key := fmt.Sprintf("%d-%v", edgePort, private)
+			sr, ok := servicesByEdge[key]
+			if !ok {
+				newSR := createServiceRegistration(edgePort, !private, mode)
+				sr = &newSR
+				servicesByEdge[key] = sr
+			} else {
+				if sr.Mode != mode {
+					eb.Logger.Errorf("Service %s has selectors with mode '%s' and mode '%s", sr.ServiceName, sr.Mode, mode)
+				}
+			}
+			return sr
 		}
+
 		for _, fr := range frontends {
-			extService := fmt.Sprintf("%s-%d", fr.Service, service.ServicePort)
-			if service.ServiceName != fr.Service && service.ServiceName != extService {
+			extService := fmt.Sprintf("%s-%d", fr.Service, servicePort)
+			if serviceName != fr.Service && serviceName != extService {
 				continue
 			}
-			if fr.HttpCheckPath != "" && service.HttpCheckPath == "" {
-				service.HttpCheckPath = fr.HttpCheckPath
-			}
-			if fr.HttpCheckMethod != "" && service.HttpCheckMethod == "" {
-				service.HttpCheckMethod = fr.HttpCheckMethod
-			}
-			if fr.Mode != "" && service.Mode == "" {
-				service.Mode = fr.Mode
-			}
-			if fr.Sticky {
-				service.Sticky = true
-			}
-			if fr.Backup {
-				service.Backup = true
-			}
 			for _, sel := range fr.Selectors {
-				if sel.Port != 0 && sel.Port != service.ServicePort {
+				if sel.ServicePort != 0 && sel.ServicePort != servicePort {
 					continue
+				}
+				service := getServiceRegistration(sel.FrontendPort, sel.Private, fr.Mode)
+				if fr.HttpCheckPath != "" && service.HttpCheckPath == "" {
+					service.HttpCheckPath = fr.HttpCheckPath
+				}
+				if fr.HttpCheckMethod != "" && service.HttpCheckMethod == "" {
+					service.HttpCheckMethod = fr.HttpCheckMethod
+				}
+				if fr.Sticky {
+					service.Sticky = true
+				}
+				if fr.Backup {
+					service.Backup = true
 				}
 				srSel := ServiceSelector{
 					Weight:      sel.Weight,
 					Domain:      sel.Domain,
 					SslCertName: sel.SslCert,
 					PathPrefix:  sel.PathPrefix,
-					Private:     sel.Private,
 				}
 				for _, rwRule := range sel.RewriteRules {
 					srSel.RewriteRules = append(srSel.RewriteRules, RewriteRule{
@@ -199,11 +243,13 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 				}
 			}
 		}
-		if len(service.Selectors) > 0 {
-			if service.Mode == "" {
-				service.Mode = "http"
+		for _, service := range servicesByEdge {
+			if len(service.Selectors) > 0 {
+				if service.Mode == "" {
+					service.Mode = "http"
+				}
+				result = append(result, *service)
 			}
-			result = append(result, service)
 		}
 	}
 	return result, nil

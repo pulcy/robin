@@ -31,6 +31,8 @@ type Backend interface {
 type ServiceRegistration struct {
 	ServiceName     string           // Name of the service
 	ServicePort     int              // Port the service is listening on (inside its container)
+	EdgePort        int              // Port that Robin listening on for the service.
+	Public          bool             // If true, this service is exposed to the public network, otherwise it is only exposed to the private network.
 	Instances       ServiceInstances // List instances of the service (can not be empty)
 	Selectors       ServiceSelectors // List of selectors to match traffic to this service
 	HttpCheckPath   string           // Path (on the service) used for health checks (can be empty)
@@ -111,7 +113,6 @@ type ServiceSelector struct {
 	SslCertName       string // SSL certificate filename
 	TmpSslCertPath    string // Path of generated certificate file
 	PathPrefix        string // Prefix of HTTP path to match on
-	Private           bool   // If set, match on private port (81), otherwise match of public port (80,443)
 	Users             Users  // If set, require authentication for one of these users
 	AllowUnauthorized bool   // If set, allow all for this path
 	RewriteRules      []RewriteRule
@@ -127,7 +128,7 @@ func (fs ServiceSelector) FullString() string {
 	if fs.Domain == "" {
 		selectorRelevance += 100
 	}
-	return fmt.Sprintf("%03d-%03d-%s-%s-%s-%v-%#v-%v", (100 - fs.Weight), (1000 - selectorRelevance), fs.Domain, fs.SslCertName, fs.PathPrefix, fs.Private, users, fs.AllowUnauthorized)
+	return fmt.Sprintf("%03d-%03d-%s-%s-%s-%#v-%v", (100 - fs.Weight), (1000 - selectorRelevance), fs.Domain, fs.SslCertName, fs.PathPrefix, users, fs.AllowUnauthorized)
 }
 
 func (ss ServiceSelector) IsSecure() bool {
@@ -178,24 +179,6 @@ func (user User) FullString() string {
 }
 
 type Users []User
-
-func (sr *ServiceRegistration) HasPublicSelectors() bool {
-	for _, sel := range sr.Selectors {
-		if !sel.Private {
-			return true
-		}
-	}
-	return false
-}
-
-func (sr *ServiceRegistration) HasPrivateSelectors() bool {
-	for _, sel := range sr.Selectors {
-		if sel.Private {
-			return true
-		}
-	}
-	return false
-}
 
 func (sr *ServiceRegistration) HasAllowUnauthorized() bool {
 	for _, sel := range sr.Selectors {

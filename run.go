@@ -134,7 +134,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	logging.SetLevel(level, cmdMain.Use)
 
 	// Prepare backend
-	backend, err := backend.NewEtcdBackend(log, etcdUrl)
+	backend, err := backend.NewEtcdBackend(etcdBackendConfig, log, etcdUrl)
 	if err != nil {
 		Exitf("Failed to backend: %#v", err)
 	}

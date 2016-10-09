@@ -17,7 +17,7 @@ defaults
     errorfile 503 /app/errors/503.http
     errorfile 504 /app/errors/504.http
 
-frontend http-in
+frontend public_http_in_80
     bind *:80
     mode http
     option forwardfor
@@ -29,12 +29,12 @@ frontend http-in
     acl acl3 hdr_dom(host) -i foo.com
     acl acl4 path_beg /prefix
     acl acl5 hdr_dom(host) -i foo.com
-    use_backend backend_service4_large_prefix_only_6004_public if acl1
-    use_backend backend_service4_small_prefix_only_4700_public if acl2
-    use_backend backend_service3_prefix_4700_public if acl3 acl4
-    use_backend backend_service1_80_public if acl5
+    use_backend backend_service4_large_prefix_only_6004_public_http_in_80 if acl1
+    use_backend backend_service4_small_prefix_only_4700_public_http_in_80 if acl2
+    use_backend backend_service3_prefix_4700_public_http_in_80 if acl3 acl4
+    use_backend backend_service1_80_public_http_in_80 if acl5
 
-frontend http-in-private
+frontend private_http_in_81
     bind *:81
     mode http
     option forwardfor
@@ -42,7 +42,7 @@ frontend http-in-private
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     default_backend fallback
 
-backend backend_service1_80_public
+backend backend_service1_80_public_http_in_80
     balance roundrobin
     mode http
     http-response set-header Strict-Transport-Security max-age=63072000
@@ -55,7 +55,7 @@ backend backend_service1_80_public
     server s0-192_168_35_3-7001 192.168.35.3:7001 check
     server s1-192_168_23_1-7005 192.168.23.1:7005 check
 
-backend backend_service3_prefix_4700_public
+backend backend_service3_prefix_4700_public_http_in_80
     balance roundrobin
     mode http
     http-response set-header Strict-Transport-Security max-age=63072000
@@ -64,7 +64,7 @@ backend backend_service3_prefix_4700_public
     http-response set-header X-Content-Type-Options nosniff
     server s0-192_168_35_3-7001 192.168.35.3:7001 
 
-backend backend_service4_large_prefix_only_6004_public
+backend backend_service4_large_prefix_only_6004_public_http_in_80
     balance roundrobin
     mode http
     http-response set-header Strict-Transport-Security max-age=63072000
@@ -73,7 +73,7 @@ backend backend_service4_large_prefix_only_6004_public
     http-response set-header X-Content-Type-Options nosniff
     server s0-192_168_35_33-19001 192.168.35.33:19001 
 
-backend backend_service4_small_prefix_only_4700_public
+backend backend_service4_small_prefix_only_4700_public_http_in_80
     balance roundrobin
     mode http
     http-response set-header Strict-Transport-Security max-age=63072000
