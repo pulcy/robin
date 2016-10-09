@@ -361,7 +361,7 @@ func createAclRules(sel backend.ServiceSelector, isTcp bool) []string {
 		result = append(result, fmt.Sprintf("path_beg %s", sel.PathPrefix))
 	}
 	if len(result) == 0 && isTcp {
-		result = append(result, "true")
+		result = append(result, "always_true")
 	}
 	return result
 }
