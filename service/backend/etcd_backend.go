@@ -165,6 +165,7 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 					Port: si.Port,
 				})
 			}
+			eb.Logger.Debugf("Created service '%s' edge-port=%d, public=%v, mode=%s", serviceName, edgePort, public, mode)
 			return service
 		}
 		servicesByEdge := make(map[string]*ServiceRegistration)
@@ -197,8 +198,8 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 		}
 
 		for _, fr := range frontends {
-			extService := fmt.Sprintf("%s-%d", fr.Service, servicePort)
-			if serviceName != fr.Service && serviceName != extService {
+			frExtService := fmt.Sprintf("%s-%d", fr.Service, servicePort)
+			if serviceName != fr.Service && serviceName != frExtService {
 				continue
 			}
 			for _, sel := range fr.Selectors {
@@ -238,14 +239,15 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 					})
 				}
 				if !service.Selectors.Contains(srSel) {
+					eb.Logger.Debugf("Selector %s added to service %s:%d", srSel.FullString(), serviceName, servicePort)
 					service.Selectors = append(service.Selectors, srSel)
+				} else {
+					eb.Logger.Debugf("Selector %s already found in service %s:%d", srSel.FullString(), serviceName, servicePort)
 				}
 			}
 		}
 		for _, service := range servicesByEdge {
-			if len(service.Selectors) > 0 {
-				result = append(result, *service)
-			}
+			result = append(result, *service)
 		}
 	}
 	return result, nil

@@ -173,11 +173,8 @@ func (s *acmeService) Extend(services backend.ServiceRegistrations) (backend.Ser
 	allDomains := []string{}
 	updatedServices := backend.ServiceRegistrations{}
 	for _, sr := range services {
-		if !sr.Public {
-			continue
-		}
 		for selIndex, sel := range sr.Selectors {
-			if sel.SslCertName != "" || sel.Domain == "" {
+			if !sr.Public || sel.SslCertName != "" || sel.Domain == "" {
 				continue
 			}
 			// Domain needs a certificate, try cache first
