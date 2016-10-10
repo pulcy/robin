@@ -37,7 +37,7 @@ frontend public_tcp_in_8022
     bind *:8022
     mode tcp
     default_backend fallback
-    acl acl1 true
+    acl acl1 always_true
     use_backend backend_gogs_22_public_tcp_in_8022 if acl1
 
 backend backend_gogs_22_public_tcp_in_8022

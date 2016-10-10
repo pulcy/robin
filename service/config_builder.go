@@ -67,6 +67,7 @@ type useBlock struct {
 	AclNames          []string
 	AuthAclName       string
 	AllowUnauthorized bool
+	AllowInsecure     bool
 	RewriteRules      []backend.RewriteRule
 }
 
@@ -82,6 +83,16 @@ func (f frontend) Name() string {
 		return fmt.Sprintf("public_%s_in_%d", f.Mode, f.Port)
 	}
 	return fmt.Sprintf("private_%s_in_%d", f.Mode, f.Port)
+}
+
+// IsHTTP returns true if Mode == "http"
+func (f frontend) IsHTTP() bool {
+	return f.Mode == "http"
+}
+
+// IsTCP returns true if Mode == "tcp"
+func (f frontend) IsTCP() bool {
+	return f.Mode == "tcp"
 }
 
 type frontendList []frontend
@@ -103,16 +114,6 @@ func (l frontendList) Less(i, j int) bool {
 // Swap swaps the elements with indexes i and j.
 func (l frontendList) Swap(i, j int) {
 	l[i], l[j] = l[j], l[i]
-}
-
-// IsHTTP returns true if Mode == "http"
-func (f frontend) IsHTTP() bool {
-	return f.Mode == "http"
-}
-
-// IsTCP returns true if Mode == "tcp"
-func (f frontend) IsTCP() bool {
-	return f.Mode == "tcp"
 }
 
 // renderConfig creates a new haproxy configuration content.
@@ -210,9 +211,6 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 			secureFrontendSection = c.Section(fmt.Sprintf("frontend secure-%s", frontend.Name()))
 			frontendSections = append(frontendSections, secureFrontendSection)
 			secureFrontendSection.Add(fmt.Sprintf("bind %s:%d ssl %s no-sslv3", host, PublicHttpsPort, strings.Join(certs, " ")))
-			if s.ForceSsl {
-				secureFrontendSection.Add("redirect scheme https if !{ ssl_fc }")
-			}
 		}
 		for _, section := range frontendSections {
 			section.Add(fmt.Sprintf("mode %s", frontend.Mode))
@@ -228,11 +226,14 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		}
 		// Create acls
 		var useBlocks []useBlock
-		useBlocks, backends = createAcls(frontendSections, services, frontend, aclNameGen, backends)
+		isHTTPS := false
+		useBlocks, backends = createAcls(frontendSection, services, frontend, isHTTPS, aclNameGen, backends)
 		// Create link to backends
-		createUseBackends(frontendSection, useBlocks, frontend, (secureFrontendSection != nil))
+		createUseBackends(frontendSection, useBlocks, frontend, (secureFrontendSection != nil), frontend.Public && frontend.IsHTTP() && s.ForceSsl)
 		if secureFrontendSection != nil {
-			createUseBackends(secureFrontendSection, useBlocks, frontend, false)
+			isHTTPS = true
+			useBlocks, backends = createAcls(secureFrontendSection, services, frontend, isHTTPS, aclNameGen, backends)
+			createUseBackends(secureFrontendSection, useBlocks, frontend, false, false)
 		}
 	}
 
@@ -348,10 +349,10 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 }
 
 // createAclRules create `acl` rules for the given selector
-func createAclRules(sel backend.ServiceSelector, isTcp bool) []string {
+func createAclRules(sel backend.ServiceSelector, isHttps, isTcp bool) []string {
 	result := []string{}
 	if sel.Domain != "" {
-		if sel.IsSecure() || isTcp {
+		if (sel.IsSecure() && isHttps) || isTcp {
 			result = append(result, fmt.Sprintf("ssl_fc_sni -i %s", sel.Domain))
 		} else {
 			result = append(result, fmt.Sprintf("hdr_dom(host) -i %s", sel.Domain))
@@ -368,7 +369,7 @@ func createAclRules(sel backend.ServiceSelector, isTcp bool) []string {
 
 // creteAcls create `acl` rules for the given services and adds them
 // to the given section
-func createAcls(sections []*haproxy.Section, services backend.ServiceRegistrations, selection frontend, ng *nameGenerator, backends map[string]backendConfig) ([]useBlock, map[string]backendConfig) {
+func createAcls(section *haproxy.Section, services backend.ServiceRegistrations, selection frontend, isHttps bool, ng *nameGenerator, backends map[string]backendConfig) ([]useBlock, map[string]backendConfig) {
 	pairs := selectorServicePairs{}
 	for _, sr := range services {
 		if sr.IsHttp() == selection.IsHTTP() && sr.Public == selection.Public {
@@ -386,14 +387,12 @@ func createAcls(sections []*haproxy.Section, services backend.ServiceRegistratio
 	useBlocks := []useBlock{}
 	rules2Block := make(map[string]useBlock)
 	for _, pair := range pairs {
-		rules := createAclRules(pair.Selector, pair.Service.IsTcp())
+		rules := createAclRules(pair.Selector, isHttps, pair.Service.IsTcp())
 
 		authAclName := ""
 		if len(pair.Selector.Users) > 0 {
 			authAclName = "auth_" + ng.Next()
-			for _, section := range sections {
-				section.Add(fmt.Sprintf("acl %s http_auth(%s)", authAclName, userListName(pair.Service, pair.SelectorIndex)))
-			}
+			section.Add(fmt.Sprintf("acl %s http_auth(%s)", authAclName, userListName(pair.Service, pair.SelectorIndex)))
 		}
 
 		if len(rules) == 0 && authAclName == "" {
@@ -405,9 +404,7 @@ func createAcls(sections []*haproxy.Section, services backend.ServiceRegistratio
 			aclNames := []string{}
 			for _, rule := range rules {
 				aclName := ng.Next()
-				for _, section := range sections {
-					section.Add(fmt.Sprintf("acl %s %s", aclName, rule))
-				}
+				section.Add(fmt.Sprintf("acl %s %s", aclName, rule))
 				aclNames = append(aclNames, aclName)
 			}
 			backendName := generateBackendName(pair.Service, selection)
@@ -417,6 +414,7 @@ func createAcls(sections []*haproxy.Section, services backend.ServiceRegistratio
 				AuthAclName:       authAclName,
 				RewriteRules:      pair.Selector.RewriteRules,
 				AllowUnauthorized: pair.Selector.AllowUnauthorized,
+				AllowInsecure:     pair.Selector.AllowInsecure,
 			}
 			useBlocks = append(useBlocks, block)
 			rules2Block[rulesKey] = block
@@ -437,13 +435,17 @@ func createAcls(sections []*haproxy.Section, services backend.ServiceRegistratio
 
 // createUseBackends creates a `use_backend` rules for the given input
 // and adds it to the given section
-func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection frontend, redirectHttps bool) {
+func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection frontend, redirectHttps, forceSecure bool) {
 	for _, useBlock := range useBlocks {
 		if len(useBlock.AclNames) == 0 {
 			continue
 		}
 		acls := strings.Join(useBlock.AclNames, " ")
-		if useBlock.AllowUnauthorized {
+		skipUseBackend := false
+		if !useBlock.AllowInsecure && forceSecure {
+			section.Add(fmt.Sprintf("redirect scheme https if !{ ssl_fc } %s", acls))
+			skipUseBackend = true
+		} else if useBlock.AllowUnauthorized {
 			section.Add(fmt.Sprintf("http-request allow if %s", acls))
 		} else if useBlock.AuthAclName != "" {
 			if redirectHttps {
@@ -453,7 +455,6 @@ func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection
 				section.Add(fmt.Sprintf("http-request auth if %s !%s", acls, useBlock.AuthAclName))
 			}
 		}
-		skipUseBackend := false
 		for _, rwRule := range useBlock.RewriteRules {
 			if rwRule.PathPrefix != "" {
 				prefix := strings.TrimSuffix(rwRule.PathPrefix, "/")
@@ -495,17 +496,6 @@ func userListName(sr backend.ServiceRegistration, selectorIndex int) string {
 func cleanName(s string) string {
 	return s // TODO
 }
-
-/*func visibilityPostfix_(selection frontend) string {
-	if !selection.Public {
-		if selection.IsHttp() {
-			return "private"
-		} else {
-			return "private-tcp"
-		}
-	}
-	return "public"
-}*/
 
 type selectorServicePair struct {
 	Selector      backend.ServiceSelector

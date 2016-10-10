@@ -21,6 +21,12 @@ var (
 			PrivateHost: "10.0.0.1",
 		},
 	}
+	forceSecureService = Service{
+		ServiceConfig: ServiceConfig{
+			PrivateHost: "10.0.0.1",
+			ForceSsl:    true,
+		},
+	}
 	privateOnlyService = Service{
 		ServiceConfig: ServiceConfig{
 			PrivateHost:   "10.0.0.2",
@@ -274,7 +280,7 @@ var (
 			ResultPath: "./fixtures/private_service.txt",
 		},
 		configTest{
-			Service: testService,
+			Service: forceSecureService,
 			Services: backend.ServiceRegistrations{
 				backend.ServiceRegistration{
 					ServiceName: "service1",
@@ -288,11 +294,13 @@ var (
 					},
 					Selectors: backend.ServiceSelectors{
 						backend.ServiceSelector{
-							Domain: "foo.com",
+							Domain:      "foo.com",
+							SslCertName: "foo-com.crt",
 						},
 						backend.ServiceSelector{
-							Domain:     "nested.foo.com",
-							PathPrefix: "/foo",
+							Domain:      "nested.foo.com",
+							PathPrefix:  "/foo",
+							SslCertName: "nested-foo-com.crt",
 						},
 					},
 					Mode: "http",

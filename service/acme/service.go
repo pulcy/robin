@@ -237,6 +237,7 @@ func (s *acmeService) createAcmeServiceRegistration() backend.ServiceRegistratio
 		Selectors: backend.ServiceSelectors{
 			backend.ServiceSelector{
 				AllowUnauthorized: true,
+				AllowInsecure:     true,
 				Weight:            100,
 				PathPrefix:        pathPrefix,
 			},

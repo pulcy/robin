@@ -27,8 +27,21 @@ frontend public_http_in_80
     acl acl1 hdr_dom(host) -i nested.foo.com
     acl acl2 path_beg /foo
     acl acl3 hdr_dom(host) -i foo.com
-    use_backend backend_service1_80_public_http_in_80 if acl1 acl2
-    use_backend backend_service1_80_public_http_in_80 if acl3
+    redirect scheme https if !{ ssl_fc } acl1 acl2
+    redirect scheme https if !{ ssl_fc } acl3
+
+frontend secure-public_http_in_80
+    bind *:443 ssl crt foo-com.crt crt nested-foo-com.crt no-sslv3
+    mode http
+    option forwardfor
+    reqadd X-Forwarded-Port:\ %[dst_port]
+    reqadd X-Forwarded-Proto:\ https if { ssl_fc }
+    default_backend fallback
+    acl acl4 ssl_fc_sni -i nested.foo.com
+    acl acl5 path_beg /foo
+    acl acl6 ssl_fc_sni -i foo.com
+    use_backend backend_service1_80_public_http_in_80 if acl4 acl5
+    use_backend backend_service1_80_public_http_in_80 if acl6
 
 frontend private_http_in_81
     bind 10.0.0.1:81
@@ -37,10 +50,10 @@ frontend private_http_in_81
     reqadd X-Forwarded-Port:\ %[dst_port]
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     default_backend fallback
-    acl acl4 hdr_dom(host) -i foo.com.private
-    acl acl5 hdr_dom(host) -i service1.private
-    use_backend backend_service1_80_private_http_in_81 if acl4
-    use_backend backend_service1_80_private_http_in_81 if acl5
+    acl acl7 hdr_dom(host) -i foo.com.private
+    acl acl8 hdr_dom(host) -i service1.private
+    use_backend backend_service1_80_private_http_in_81 if acl7
+    use_backend backend_service1_80_private_http_in_81 if acl8
 
 backend backend_service1_80_private_http_in_81
     balance roundrobin

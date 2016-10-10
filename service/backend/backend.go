@@ -122,6 +122,7 @@ type ServiceSelector struct {
 	PathPrefix        string // Prefix of HTTP path to match on
 	Users             Users  // If set, require authentication for one of these users
 	AllowUnauthorized bool   // If set, allow all for this path
+	AllowInsecure     bool   // If set, allow insecure access to this path
 	RewriteRules      []RewriteRule
 }
 
@@ -135,7 +136,7 @@ func (fs ServiceSelector) FullString() string {
 	if fs.Domain == "" {
 		selectorRelevance += 100
 	}
-	return fmt.Sprintf("%03d-%03d-%s-%s-%s-%#v-%v", (100 - fs.Weight), (1000 - selectorRelevance), fs.Domain, fs.SslCertName, fs.PathPrefix, users, fs.AllowUnauthorized)
+	return fmt.Sprintf("%03d-%03d-%s-%s-%s-%#v-%v-%v", (100 - fs.Weight), (1000 - selectorRelevance), fs.Domain, fs.SslCertName, fs.PathPrefix, users, fs.AllowUnauthorized, fs.AllowInsecure)
 }
 
 func (ss ServiceSelector) IsSecure() bool {
