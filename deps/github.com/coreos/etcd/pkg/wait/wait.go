@@ -1,4 +1,4 @@
-// Copyright 2015 CoreOS, Inc.
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,14 +17,14 @@
 package wait
 
 import (
+	"log"
 	"sync"
-
-	"github.com/coreos/etcd/pkg/testutil"
 )
 
 type Wait interface {
 	Register(id uint64) <-chan interface{}
 	Trigger(id uint64, x interface{})
+	IsRegistered(id uint64) bool
 }
 
 type List struct {
@@ -43,6 +43,8 @@ func (w *List) Register(id uint64) <-chan interface{} {
 	if ch == nil {
 		ch = make(chan interface{}, 1)
 		w.m[id] = ch
+	} else {
+		log.Panicf("dup id %x", id)
 	}
 	return ch
 }
@@ -58,27 +60,11 @@ func (w *List) Trigger(id uint64, x interface{}) {
 	}
 }
 
-type WaitRecorder struct {
-	Wait
-	testutil.Recorder
-}
-
-type waitRecorder struct {
-	testutil.RecorderBuffered
-}
-
-func NewRecorder() *WaitRecorder {
-	wr := &waitRecorder{}
-	return &WaitRecorder{Wait: wr, Recorder: wr}
-}
-func NewNop() Wait { return NewRecorder() }
-
-func (w *waitRecorder) Register(id uint64) <-chan interface{} {
-	w.Record(testutil.Action{Name: "Register"})
-	return nil
-}
-func (w *waitRecorder) Trigger(id uint64, x interface{}) {
-	w.Record(testutil.Action{Name: "Trigger"})
+func (w *List) IsRegistered(id uint64) bool {
+	w.l.Lock()
+	defer w.l.Unlock()
+	_, ok := w.m[id]
+	return ok
 }
 
 type waitWithResponse struct {
@@ -93,3 +79,6 @@ func (w *waitWithResponse) Register(id uint64) <-chan interface{} {
 	return w.ch
 }
 func (w *waitWithResponse) Trigger(id uint64, x interface{}) {}
+func (w *waitWithResponse) IsRegistered(id uint64) bool {
+	panic("waitWithResponse.IsRegistered() shouldn't be called")
+}

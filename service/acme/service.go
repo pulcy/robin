@@ -95,7 +95,7 @@ func (s *acmeService) Start() error {
 	}
 
 	if len(missingArgs) > 0 {
-		s.Logger.Warning("ACME is not configured, some it will not be used. Missing: %v", missingArgs)
+		s.Logger.Warningf("ACME is not configured, some it will not be used. Missing: %v", missingArgs)
 		return nil
 	}
 

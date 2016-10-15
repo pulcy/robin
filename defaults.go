@@ -50,6 +50,11 @@ const (
 	defaultPrivateStatsPort = 7089
 )
 
+const (
+	defaultApiHost = "0.0.0.0"
+	defaultApiPort = 8056
+)
+
 var (
 	etcdBackendConfig = backend.BackendConfig{
 		PublicEdgePort:      service.PublicHttpPort,

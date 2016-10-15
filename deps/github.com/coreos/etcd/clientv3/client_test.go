@@ -1,4 +1,4 @@
-// Copyright 2016 CoreOS, Inc.
+// Copyright 2016 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,13 +15,19 @@
 package clientv3
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/coreos/etcd/Godeps/_workspace/src/google.golang.org/grpc"
+	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
+	"github.com/coreos/etcd/pkg/testutil"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
 
 func TestDialTimeout(t *testing.T) {
+	defer testutil.AfterTest(t)
+
 	donec := make(chan error)
 	go func() {
 		// without timeout, grpc keeps redialing if connection refused
@@ -50,5 +56,34 @@ func TestDialTimeout(t *testing.T) {
 		if err != grpc.ErrClientConnTimeout {
 			t.Errorf("unexpected error %v, want %v", err, grpc.ErrClientConnTimeout)
 		}
+	}
+}
+
+func TestDialNoTimeout(t *testing.T) {
+	cfg := Config{Endpoints: []string{"127.0.0.1:12345"}}
+	c, err := New(cfg)
+	if c == nil || err != nil {
+		t.Fatalf("new client with DialNoWait should succeed, got %v", err)
+	}
+	c.Close()
+}
+
+func TestIsHaltErr(t *testing.T) {
+	if !isHaltErr(nil, fmt.Errorf("etcdserver: some etcdserver error")) {
+		t.Errorf(`error prefixed with "etcdserver: " should be Halted by default`)
+	}
+	if isHaltErr(nil, rpctypes.ErrGRPCStopped) {
+		t.Errorf("error %v should not halt", rpctypes.ErrGRPCStopped)
+	}
+	if isHaltErr(nil, rpctypes.ErrGRPCNoLeader) {
+		t.Errorf("error %v should not halt", rpctypes.ErrGRPCNoLeader)
+	}
+	ctx, cancel := context.WithCancel(context.TODO())
+	if isHaltErr(ctx, nil) {
+		t.Errorf("no error and active context should not be Halted")
+	}
+	cancel()
+	if !isHaltErr(ctx, nil) {
+		t.Errorf("cancel on context should be Halted")
 	}
 }

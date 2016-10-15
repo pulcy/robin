@@ -21,6 +21,7 @@ import (
 	"path"
 
 	"github.com/coreos/etcd/client"
+	"github.com/juju/errgo"
 	"github.com/op/go-logging"
 	regapi "github.com/pulcy/registrator-api"
 	"github.com/pulcy/robin-api"
@@ -251,4 +252,9 @@ func (eb *etcdBackend) mergeTrees(services []regapi.Service, frontends []api.Fro
 		}
 	}
 	return result, nil
+}
+
+func isEtcdError(err error, code int) bool {
+	cerr, ok := errgo.Cause(err).(client.Error)
+	return ok && cerr.Code == code
 }

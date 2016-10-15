@@ -1,4 +1,4 @@
-// Copyright 2015 CoreOS, Inc.
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,13 +18,16 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/coreos/etcd/raft/raftpb"
 )
 
 type cluster struct {
-	peers    []string
-	commitC  []<-chan *string
-	errorC   []<-chan error
-	proposeC []chan string
+	peers       []string
+	commitC     []<-chan *string
+	errorC      []<-chan error
+	proposeC    []chan string
+	confChangeC []chan raftpb.ConfChange
 }
 
 // newCluster creates a cluster of n nodes
@@ -35,15 +38,19 @@ func newCluster(n int) *cluster {
 	}
 
 	clus := &cluster{
-		peers:    peers,
-		commitC:  make([]<-chan *string, len(peers)),
-		errorC:   make([]<-chan error, len(peers)),
-		proposeC: make([]chan string, len(peers))}
+		peers:       peers,
+		commitC:     make([]<-chan *string, len(peers)),
+		errorC:      make([]<-chan error, len(peers)),
+		proposeC:    make([]chan string, len(peers)),
+		confChangeC: make([]chan raftpb.ConfChange, len(peers)),
+	}
 
 	for i := range clus.peers {
 		os.RemoveAll(fmt.Sprintf("raftexample-%d", i+1))
+		os.RemoveAll(fmt.Sprintf("raftexample-%d-snap", i+1))
 		clus.proposeC[i] = make(chan string, 1)
-		clus.commitC[i], clus.errorC[i] = newRaftNode(i+1, clus.peers, clus.proposeC[i])
+		clus.confChangeC[i] = make(chan raftpb.ConfChange, 1)
+		clus.commitC[i], clus.errorC[i], _ = newRaftNode(i+1, clus.peers, false, nil, clus.proposeC[i], clus.confChangeC[i])
 	}
 
 	return clus
@@ -73,6 +80,7 @@ func (clus *cluster) Close() (err error) {
 		}
 		// clean intermediates
 		os.RemoveAll(fmt.Sprintf("raftexample-%d", i+1))
+		os.RemoveAll(fmt.Sprintf("raftexample-%d-snap", i+1))
 	}
 	return err
 }

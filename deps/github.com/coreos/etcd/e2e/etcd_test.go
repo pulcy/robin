@@ -1,4 +1,4 @@
-// Copyright 2016 CoreOS, Inc.
+// Copyright 2016 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,124 +16,102 @@ package e2e
 
 import (
 	"fmt"
-	"math/rand"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
-	"testing"
 
-	"github.com/coreos/etcd/Godeps/_workspace/src/github.com/coreos/gexpect"
+	"github.com/coreos/etcd/etcdserver"
+	"github.com/coreos/etcd/pkg/expect"
 	"github.com/coreos/etcd/pkg/fileutil"
-	"github.com/coreos/etcd/pkg/testutil"
 )
 
+const etcdProcessBasePort = 20000
+
+var (
+	binPath        string
+	ctlBinPath     string
+	certPath       string
+	privateKeyPath string
+	caPath         string
+)
+
+type clientConnType int
+
 const (
-	etcdProcessBasePort = 20000
-	certPath            = "../integration/fixtures/server.crt"
-	privateKeyPath      = "../integration/fixtures/server.key.insecure"
-	caPath              = "../integration/fixtures/ca.crt"
+	clientNonTLS clientConnType = iota
+	clientTLS
+	clientTLSAndNonTLS
 )
 
 var (
-	defaultConfig = etcdProcessClusterConfig{
+	configNoTLS = etcdProcessClusterConfig{
 		clusterSize:  3,
 		proxySize:    0,
-		isClientTLS:  false,
-		isPeerTLS:    false,
 		initialToken: "new",
 	}
-	defaultConfigTLS = etcdProcessClusterConfig{
+	configAutoTLS = etcdProcessClusterConfig{
+		clusterSize:   3,
+		isPeerTLS:     true,
+		isPeerAutoTLS: true,
+		initialToken:  "new",
+	}
+	configTLS = etcdProcessClusterConfig{
 		clusterSize:  3,
 		proxySize:    0,
-		isClientTLS:  true,
+		clientTLS:    clientTLS,
 		isPeerTLS:    true,
 		initialToken: "new",
 	}
-	defaultConfigClientTLS = etcdProcessClusterConfig{
+	configClientTLS = etcdProcessClusterConfig{
 		clusterSize:  3,
 		proxySize:    0,
-		isClientTLS:  true,
-		isPeerTLS:    false,
+		clientTLS:    clientTLS,
 		initialToken: "new",
 	}
-	defaultConfigPeerTLS = etcdProcessClusterConfig{
+	configClientBoth = etcdProcessClusterConfig{
+		clusterSize:  1,
+		proxySize:    0,
+		clientTLS:    clientTLSAndNonTLS,
+		initialToken: "new",
+	}
+	configClientAutoTLS = etcdProcessClusterConfig{
+		clusterSize:     1,
+		proxySize:       0,
+		isClientAutoTLS: true,
+		clientTLS:       clientTLS,
+		initialToken:    "new",
+	}
+	configPeerTLS = etcdProcessClusterConfig{
 		clusterSize:  3,
 		proxySize:    0,
-		isClientTLS:  false,
 		isPeerTLS:    true,
 		initialToken: "new",
 	}
-	defaultConfigWithProxy = etcdProcessClusterConfig{
+	configWithProxy = etcdProcessClusterConfig{
 		clusterSize:  3,
 		proxySize:    1,
-		isClientTLS:  false,
-		isPeerTLS:    false,
 		initialToken: "new",
 	}
-	// TODO: this does not work now
-	defaultConfigWithProxyTLS = etcdProcessClusterConfig{
+	configWithProxyTLS = etcdProcessClusterConfig{
 		clusterSize:  3,
 		proxySize:    1,
-		isClientTLS:  true,
+		clientTLS:    clientTLS,
+		isPeerTLS:    true,
+		initialToken: "new",
+	}
+	configWithProxyPeerTLS = etcdProcessClusterConfig{
+		clusterSize:  3,
+		proxySize:    1,
 		isPeerTLS:    true,
 		initialToken: "new",
 	}
 )
 
-func TestBasicOpsNoTLS(t *testing.T)     { testBasicOpsPutGet(t, &defaultConfig) }
-func TestBasicOpsAllTLS(t *testing.T)    { testBasicOpsPutGet(t, &defaultConfigTLS) }
-func TestBasicOpsPeerTLS(t *testing.T)   { testBasicOpsPutGet(t, &defaultConfigPeerTLS) }
-func TestBasicOpsClientTLS(t *testing.T) { testBasicOpsPutGet(t, &defaultConfigClientTLS) }
-func testBasicOpsPutGet(t *testing.T, cfg *etcdProcessClusterConfig) {
-	defer testutil.AfterTest(t)
-
-	epc, err := newEtcdProcessCluster(cfg)
-	if err != nil {
-		t.Fatalf("could not start etcd process cluster (%v)", err)
-	}
-	defer func() {
-		if err := epc.Close(); err != nil {
-			t.Fatalf("error closing etcd processes (%v)", err)
-		}
-	}()
-
-	expectPut := `{"action":"set","node":{"key":"/testKey","value":"foo","`
-	if err := cURLPut(epc, "testKey", "foo", expectPut); err != nil {
-		// TODO: fix the certs to support cURL operations
-		// curl: (35) error:14094410:SSL routines:SSL3_READ_BYTES:sslv3 alert handshake failure
-		t.Logf("[WARNING] failed put with curl (%v)", err)
-		return
-	}
-
-	expectGet := `{"action":"get","node":{"key":"/testKey","value":"foo","`
-	if err := cURLGet(epc, "testKey", expectGet); err != nil {
-		// TODO: fix the certs to support cURL operations
-		// curl: (35) error:14094410:SSL routines:SSL3_READ_BYTES:sslv3 alert handshake failure
-		t.Logf("[WARNING] failed get with curl (%v)", err)
-		return
-	}
-}
-
-// cURLPrefixArgs builds the beginning of a curl command for a given key
-// addressed to a random URL in the given cluster.
-func cURLPrefixArgs(clus *etcdProcessCluster, key string) []string {
-	cmdArgs := []string{"curl"}
-	if clus.cfg.isClientTLS {
-		cmdArgs = append(cmdArgs, "--cacert", caPath, "--cert", certPath, "--key", privateKeyPath)
-	}
-	acurl := clus.procs[rand.Intn(clus.cfg.clusterSize)].cfg.acurl
-	keyURL := acurl.String() + "/v2/keys/testKey"
-	cmdArgs = append(cmdArgs, "-L", keyURL)
-	return cmdArgs
-}
-
-func cURLPut(clus *etcdProcessCluster, key, val, expected string) error {
-	args := append(cURLPrefixArgs(clus, key), "-XPUT", "-d", "value="+val)
-	return spawnWithExpectedString(args, expected)
-}
-
-func cURLGet(clus *etcdProcessCluster, key, expected string) error {
-	return spawnWithExpectedString(cURLPrefixArgs(clus, key), expected)
+func configStandalone(cfg etcdProcessClusterConfig) *etcdProcessClusterConfig {
+	ret := cfg
+	ret.clusterSize = 1
+	return &ret
 }
 
 type etcdProcessCluster struct {
@@ -143,23 +121,56 @@ type etcdProcessCluster struct {
 
 type etcdProcess struct {
 	cfg   *etcdProcessConfig
-	proc  *gexpect.ExpectSubprocess
+	proc  *expect.ExpectProcess
 	donec chan struct{} // closed when Interact() terminates
 }
 
 type etcdProcessConfig struct {
-	args        []string
+	execPath string
+	args     []string
+
 	dataDirPath string
-	acurl       url.URL
-	isProxy     bool
+	keepDataDir bool
+
+	name string
+
+	purl url.URL
+
+	acurl string
+	// additional url for tls connection when the etcd process
+	// serves both http and https
+	acurltls  string
+	acurlHost string
+
+	initialToken   string
+	initialCluster string
+
+	isProxy bool
 }
 
 type etcdProcessClusterConfig struct {
-	clusterSize  int
-	proxySize    int
-	isClientTLS  bool
-	isPeerTLS    bool
-	initialToken string
+	execPath    string
+	dataDirPath string
+	keepDataDir bool
+
+	clusterSize int
+
+	baseScheme string
+	basePort   int
+
+	proxySize int
+
+	snapCount int // default is 10000
+
+	clientTLS             clientConnType
+	clientCertAuthEnabled bool
+	isPeerTLS             bool
+	isPeerAutoTLS         bool
+	isClientAutoTLS       bool
+	forceNewCluster       bool
+	initialToken          string
+	quotaBackendBytes     int64
+	noStrictReconfig      bool
 }
 
 // newEtcdProcessCluster launches a new cluster from etcd processes, returning
@@ -181,92 +192,182 @@ func newEtcdProcessCluster(cfg *etcdProcessClusterConfig) (*etcdProcessCluster, 
 		epc.procs[i] = proc
 	}
 
-	// wait for cluster to start
-	readyC := make(chan error, cfg.clusterSize+cfg.proxySize)
-	readyStr := "etcdserver: set the initial cluster version to"
-	for i := range etcdCfgs {
-		go func(etcdp *etcdProcess) {
-			rs := readyStr
-			if etcdp.cfg.isProxy {
-				// rs = "proxy: listening for client requests on"
-				rs = "proxy: endpoints found"
-			}
-			ok, err := etcdp.proc.ExpectRegex(rs)
-			if err != nil {
-				readyC <- err
-			} else if !ok {
-				readyC <- fmt.Errorf("couldn't get expected output: '%s'", rs)
-			} else {
-				readyC <- nil
-			}
-			etcdp.proc.ReadLine()
-			etcdp.proc.Interact() // this blocks(leaks) if another goroutine is reading
-			etcdp.proc.ReadLine() // wait for leaky goroutine to accept an EOF
-			close(etcdp.donec)
-		}(epc.procs[i])
-	}
-	for range etcdCfgs {
-		if err := <-readyC; err != nil {
-			epc.Close()
-			return nil, err
-		}
-	}
-	return epc, nil
+	return epc, epc.Start()
 }
 
 func newEtcdProcess(cfg *etcdProcessConfig) (*etcdProcess, error) {
-	if fileutil.Exist("../bin/etcd") == false {
+	if !fileutil.Exist(cfg.execPath) {
 		return nil, fmt.Errorf("could not find etcd binary")
 	}
-	if err := os.RemoveAll(cfg.dataDirPath); err != nil {
-		return nil, err
+
+	if !cfg.keepDataDir {
+		if err := os.RemoveAll(cfg.dataDirPath); err != nil {
+			return nil, err
+		}
 	}
-	child, err := spawnCmd(append([]string{"../bin/etcd"}, cfg.args...))
+
+	child, err := spawnCmd(append([]string{cfg.execPath}, cfg.args...))
 	if err != nil {
 		return nil, err
 	}
-	child.Capture()
 	return &etcdProcess{cfg: cfg, proc: child, donec: make(chan struct{})}, nil
 }
 
 func (cfg *etcdProcessClusterConfig) etcdProcessConfigs() []*etcdProcessConfig {
+	binPath = binDir + "/etcd"
+	ctlBinPath = binDir + "/etcdctl"
+	certPath = certDir + "/server.crt"
+	privateKeyPath = certDir + "/server.key.insecure"
+	caPath = certDir + "/ca.crt"
+
+	if cfg.basePort == 0 {
+		cfg.basePort = etcdProcessBasePort
+	}
+
+	if cfg.execPath == "" {
+		cfg.execPath = binPath
+	}
+	if cfg.snapCount == 0 {
+		cfg.snapCount = etcdserver.DefaultSnapCount
+	}
+
 	clientScheme := "http"
-	if cfg.isClientTLS {
+	if cfg.clientTLS == clientTLS {
 		clientScheme = "https"
 	}
-	peerScheme := "http"
+	peerScheme := cfg.baseScheme
+	if peerScheme == "" {
+		peerScheme = "http"
+	}
 	if cfg.isPeerTLS {
-		peerScheme = "https"
+		peerScheme += "s"
 	}
 
 	etcdCfgs := make([]*etcdProcessConfig, cfg.clusterSize+cfg.proxySize)
 	initialCluster := make([]string, cfg.clusterSize)
 	for i := 0; i < cfg.clusterSize; i++ {
-		port := etcdProcessBasePort + 2*i
-		curl := url.URL{Scheme: clientScheme, Host: fmt.Sprintf("localhost:%d", port)}
+		var curls []string
+		var curl, curltls string
+		port := cfg.basePort + 2*i
+		curlHost := fmt.Sprintf("localhost:%d", port)
+
+		switch cfg.clientTLS {
+		case clientNonTLS, clientTLS:
+			curl = (&url.URL{Scheme: clientScheme, Host: curlHost}).String()
+			curls = []string{curl}
+		case clientTLSAndNonTLS:
+			curl = (&url.URL{Scheme: "http", Host: curlHost}).String()
+			curltls = (&url.URL{Scheme: "https", Host: curlHost}).String()
+			curls = []string{curl, curltls}
+		}
+
 		purl := url.URL{Scheme: peerScheme, Host: fmt.Sprintf("localhost:%d", port+1)}
 		name := fmt.Sprintf("testname%d", i)
-		dataDirPath := name + ".etcd"
+		dataDirPath := cfg.dataDirPath
+		if cfg.dataDirPath == "" {
+			var derr error
+			dataDirPath, derr = ioutil.TempDir("", name+".etcd")
+			if derr != nil {
+				panic("could not get tempdir for datadir")
+			}
+		}
 		initialCluster[i] = fmt.Sprintf("%s=%s", name, purl.String())
 
 		args := []string{
 			"--name", name,
-			"--listen-client-urls", curl.String(),
-			"--advertise-client-urls", curl.String(),
+			"--listen-client-urls", strings.Join(curls, ","),
+			"--advertise-client-urls", strings.Join(curls, ","),
 			"--listen-peer-urls", purl.String(),
 			"--initial-advertise-peer-urls", purl.String(),
 			"--initial-cluster-token", cfg.initialToken,
 			"--data-dir", dataDirPath,
+			"--snapshot-count", fmt.Sprintf("%d", cfg.snapCount),
 		}
-		if cfg.isClientTLS {
+		if cfg.forceNewCluster {
+			args = append(args, "--force-new-cluster")
+		}
+		if cfg.quotaBackendBytes > 0 {
+			args = append(args,
+				"--quota-backend-bytes", fmt.Sprintf("%d", cfg.quotaBackendBytes),
+			)
+		}
+		if cfg.noStrictReconfig {
+			args = append(args, "--strict-reconfig-check=false")
+		}
+
+		args = append(args, cfg.tlsArgs()...)
+		etcdCfgs[i] = &etcdProcessConfig{
+			execPath:     cfg.execPath,
+			args:         args,
+			dataDirPath:  dataDirPath,
+			keepDataDir:  cfg.keepDataDir,
+			name:         name,
+			purl:         purl,
+			acurl:        curl,
+			acurltls:     curltls,
+			acurlHost:    curlHost,
+			initialToken: cfg.initialToken,
+		}
+	}
+	for i := 0; i < cfg.proxySize; i++ {
+		port := cfg.basePort + 2*cfg.clusterSize + i + 1
+		curlHost := fmt.Sprintf("localhost:%d", port)
+		curl := url.URL{Scheme: clientScheme, Host: curlHost}
+		name := fmt.Sprintf("testname-proxy%d", i)
+		dataDirPath, derr := ioutil.TempDir("", name+".etcd")
+		if derr != nil {
+			panic("could not get tempdir for datadir")
+		}
+		args := []string{
+			"--name", name,
+			"--proxy", "on",
+			"--listen-client-urls", curl.String(),
+			"--data-dir", dataDirPath,
+		}
+		args = append(args, cfg.tlsArgs()...)
+		etcdCfgs[cfg.clusterSize+i] = &etcdProcessConfig{
+			execPath:    cfg.execPath,
+			args:        args,
+			dataDirPath: dataDirPath,
+			keepDataDir: cfg.keepDataDir,
+			name:        name,
+			acurl:       curl.String(),
+			acurlHost:   curlHost,
+			isProxy:     true,
+		}
+	}
+
+	initialClusterArgs := []string{"--initial-cluster", strings.Join(initialCluster, ",")}
+	for i := range etcdCfgs {
+		etcdCfgs[i].initialCluster = strings.Join(initialCluster, ",")
+		etcdCfgs[i].args = append(etcdCfgs[i].args, initialClusterArgs...)
+	}
+
+	return etcdCfgs
+}
+
+func (cfg *etcdProcessClusterConfig) tlsArgs() (args []string) {
+	if cfg.clientTLS != clientNonTLS {
+		if cfg.isClientAutoTLS {
+			args = append(args, "--auto-tls=true")
+		} else {
 			tlsClientArgs := []string{
 				"--cert-file", certPath,
 				"--key-file", privateKeyPath,
 				"--ca-file", caPath,
 			}
 			args = append(args, tlsClientArgs...)
+
+			if cfg.clientCertAuthEnabled {
+				args = append(args, "--client-cert-auth")
+			}
 		}
-		if cfg.isPeerTLS {
+	}
+
+	if cfg.isPeerTLS {
+		if cfg.isPeerAutoTLS {
+			args = append(args, "--peer-auto-tls=true")
+		} else {
 			tlsPeerArgs := []string{
 				"--peer-cert-file", certPath,
 				"--peer-key-file", privateKeyPath,
@@ -274,95 +375,156 @@ func (cfg *etcdProcessClusterConfig) etcdProcessConfigs() []*etcdProcessConfig {
 			}
 			args = append(args, tlsPeerArgs...)
 		}
-
-		etcdCfgs[i] = &etcdProcessConfig{
-			args:        args,
-			dataDirPath: dataDirPath,
-			acurl:       curl,
-		}
 	}
-	for i := 0; i < cfg.proxySize; i++ {
-		port := etcdProcessBasePort + 2*cfg.clusterSize + i + 1
-		curl := url.URL{Scheme: clientScheme, Host: fmt.Sprintf("localhost:%d", port)}
-		name := fmt.Sprintf("testname-proxy%d", i)
-		dataDirPath := name + ".etcd"
-		args := []string{
-			"--name", name,
-			"--proxy", "on",
-			"--listen-client-urls", curl.String(),
-			"--data-dir", dataDirPath,
-		}
-		etcdCfgs[cfg.clusterSize+i] = &etcdProcessConfig{
-			args:        args,
-			dataDirPath: dataDirPath,
-			acurl:       curl,
-			isProxy:     true,
-		}
-	}
-
-	initialClusterArgs := []string{"--initial-cluster", strings.Join(initialCluster, ",")}
-	for i := range etcdCfgs {
-		etcdCfgs[i].args = append(etcdCfgs[i].args, initialClusterArgs...)
-	}
-
-	return etcdCfgs
+	return args
 }
 
-func (epc *etcdProcessCluster) Close() (err error) {
+func (epc *etcdProcessCluster) Start() (err error) {
+	readyC := make(chan error, epc.cfg.clusterSize+epc.cfg.proxySize)
+	for i := range epc.procs {
+		go func(n int) { readyC <- epc.procs[n].waitReady() }(i)
+	}
+	for range epc.procs {
+		if err := <-readyC; err != nil {
+			epc.Close()
+			return err
+		}
+	}
+	return nil
+}
+
+func (epc *etcdProcessCluster) RestartAll() error {
+	for i := range epc.procs {
+		proc, err := newEtcdProcess(epc.procs[i].cfg)
+		if err != nil {
+			epc.Close()
+			return err
+		}
+		epc.procs[i] = proc
+	}
+	return epc.Start()
+}
+
+func (epc *etcdProcessCluster) StopAll() (err error) {
 	for _, p := range epc.procs {
 		if p == nil {
 			continue
 		}
-		os.RemoveAll(p.cfg.dataDirPath)
-		if curErr := p.proc.Close(); curErr != nil {
+		if curErr := p.Stop(); curErr != nil {
 			if err != nil {
 				err = fmt.Errorf("%v; %v", err, curErr)
 			} else {
 				err = curErr
 			}
 		}
-		<-p.donec
 	}
 	return err
 }
 
-func spawnCmd(args []string) (*gexpect.ExpectSubprocess, error) {
-	// redirect stderr to stdout since gexpect only uses stdout
-	cmd := `/bin/sh -c "` + strings.Join(args, " ") + ` 2>&1 "`
-	return gexpect.Spawn(cmd)
+func (epc *etcdProcessCluster) Close() error {
+	err := epc.StopAll()
+	for _, p := range epc.procs {
+		// p is nil when newEtcdProcess fails in the middle
+		// Close still gets called to clean up test data
+		if p == nil {
+			continue
+		}
+		os.RemoveAll(p.cfg.dataDirPath)
+	}
+	return err
+}
+
+func (ep *etcdProcess) Restart() error {
+	newEp, err := newEtcdProcess(ep.cfg)
+	if err != nil {
+		ep.Stop()
+		return err
+	}
+	*ep = *newEp
+	if err = ep.waitReady(); err != nil {
+		ep.Stop()
+		return err
+	}
+	return nil
+}
+
+func (ep *etcdProcess) Stop() error {
+	if ep == nil {
+		return nil
+	}
+	if err := ep.proc.Stop(); err != nil {
+		return err
+	}
+	<-ep.donec
+
+	if ep.cfg.purl.Scheme == "unix" || ep.cfg.purl.Scheme == "unixs" {
+		os.RemoveAll(ep.cfg.purl.Host)
+	}
+	return nil
+}
+
+func (ep *etcdProcess) waitReady() error {
+	defer close(ep.donec)
+	return waitReadyExpectProc(ep.proc, ep.cfg.isProxy)
+}
+
+func waitReadyExpectProc(exproc *expect.ExpectProcess, isProxy bool) error {
+	readyStrs := []string{"enabled capabilities for version", "published"}
+	if isProxy {
+		readyStrs = []string{"httpproxy: endpoints found"}
+	}
+	c := 0
+	matchSet := func(l string) bool {
+		for _, s := range readyStrs {
+			if strings.Contains(l, s) {
+				c++
+				break
+			}
+		}
+		return c == len(readyStrs)
+	}
+	_, err := exproc.ExpectFunc(matchSet)
+	return err
+}
+
+func spawnCmd(args []string) (*expect.ExpectProcess, error) {
+	return expect.NewExpect(args[0], args[1:]...)
 }
 
 func spawnWithExpect(args []string, expected string) error {
-	proc, err := spawnCmd(args)
-	if err != nil {
-		return err
-	}
-	ok, err := proc.ExpectRegex(expected)
-	perr := proc.Close()
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("couldn't get expected output: '%s'", expected)
-	}
-	return perr
+	return spawnWithExpects(args, []string{expected}...)
 }
 
-// spawnWithExpectedString compares outputs in string format.
-// This is useful when gexpect does not match regex correctly with
-// some UTF-8 format characters.
-func spawnWithExpectedString(args []string, expected string) error {
+func spawnWithExpects(args []string, xs ...string) error {
 	proc, err := spawnCmd(args)
 	if err != nil {
 		return err
 	}
-	s, err := proc.ReadLine()
+	// process until either stdout or stderr contains
+	// the expected string
+	var (
+		lines    []string
+		lineFunc = func(txt string) bool { return true }
+	)
+	for _, txt := range xs {
+		for {
+			l, err := proc.ExpectFunc(lineFunc)
+			if err != nil {
+				proc.Close()
+				return fmt.Errorf("%v (expected %q, got %q)", err, txt, lines)
+			}
+			lines = append(lines, l)
+			if strings.Contains(l, txt) {
+				break
+			}
+		}
+	}
 	perr := proc.Close()
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(s, expected) {
-		return fmt.Errorf("expected %q, got %q", expected, s)
+	if len(xs) == 0 && proc.LineCount() != 0 { // expect no output
+		return fmt.Errorf("unexpected output (got lines %q, line count %d)", lines, proc.LineCount())
 	}
 	return perr
 }
@@ -372,6 +534,22 @@ func (epc *etcdProcessCluster) proxies() []*etcdProcess {
 	return epc.procs[epc.cfg.clusterSize:]
 }
 
-func (epc *etcdProcessCluster) backends() []*etcdProcess {
+func (epc *etcdProcessCluster) processes() []*etcdProcess {
 	return epc.procs[:epc.cfg.clusterSize]
+}
+
+func (epc *etcdProcessCluster) endpoints() []string {
+	eps := make([]string, epc.cfg.clusterSize)
+	for i, ep := range epc.processes() {
+		eps[i] = ep.cfg.acurl
+	}
+	return eps
+}
+
+func (epc *etcdProcessCluster) grpcEndpoints() []string {
+	eps := make([]string, epc.cfg.clusterSize)
+	for i, ep := range epc.processes() {
+		eps[i] = ep.cfg.acurlHost
+	}
+	return eps
 }
