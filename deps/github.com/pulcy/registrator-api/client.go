@@ -110,7 +110,7 @@ func (c *registratorClient) Services() ([]Service, error) {
 			}
 			s, ok := partialServices[port]
 			if !ok {
-				s = &Service{ServiceName: serviceName, ServicePort: port}
+				s = &Service{ServiceName: stripPortFromServiceName(serviceName, port), ServicePort: port}
 				partialServices[port] = s
 			}
 			s.Instances = append(s.Instances, instance)
@@ -145,4 +145,9 @@ func (c *registratorClient) parseServiceInstance(s string) (ServiceInstance, err
 		IP:   parts[0],
 		Port: port,
 	}, nil
+}
+
+func stripPortFromServiceName(serviceName string, port int) string {
+	suffix := fmt.Sprintf("-%d", port)
+	return strings.TrimSuffix(serviceName, suffix)
 }

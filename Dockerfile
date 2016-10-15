@@ -1,5 +1,5 @@
 # Load-balancer
-FROM alpine:3.3
+FROM alpine:3.4
 
 # ---------------------------------------------------------
 # Installation
@@ -36,8 +36,7 @@ RUN cat /app/errors/504.hdr /app/public_html/50x.html > /app/errors/504.http
 ADD ./robin /app/
 
 # Configure volumns
-VOLUME ["/data"]
-VOLUME ["/dev/log"]
+VOLUME ["/data", "/dev/log"]
 
 # Export ports
 # 80:   Public HTTP
@@ -46,12 +45,7 @@ VOLUME ["/dev/log"]
 # 443:  Public HTTPS
 # 7088: Stats HTTPS
 # 8055: Metrics
-EXPOSE 80
-EXPOSE 81
-EXPOSE 82
-EXPOSE 443
-EXPOSE 7088
-EXPOSE 8055
+EXPOSE 80 81 82 443 7088 8055 8056
 
 # Start the load-balancer
 ENTRYPOINT ["/app/robin"]

@@ -1,4 +1,4 @@
-// Copyright 2016 CoreOS, Inc.
+// Copyright 2016 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,19 +17,21 @@ package recipe
 import (
 	"fmt"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/storage/storagepb"
+	v3 "github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/mvcc/mvccpb"
+	"golang.org/x/net/context"
 )
 
 // PriorityQueue implements a multi-reader, multi-writer distributed queue.
 type PriorityQueue struct {
-	client *clientv3.Client
+	client *v3.Client
+	ctx    context.Context
 	key    string
 }
 
 // NewPriorityQueue creates an etcd priority queue.
-func NewPriorityQueue(client *clientv3.Client, key string) *PriorityQueue {
-	return &PriorityQueue{client, key + "/"}
+func NewPriorityQueue(client *v3.Client, key string) *PriorityQueue {
+	return &PriorityQueue{client, context.TODO(), key + "/"}
 }
 
 // Enqueue puts a value into a queue with a given priority.
@@ -43,12 +45,12 @@ func (q *PriorityQueue) Enqueue(val string, pr uint16) error {
 // queue is empty, Dequeue blocks until items are available.
 func (q *PriorityQueue) Dequeue() (string, error) {
 	// TODO: fewer round trips by fetching more than one key
-	resp, err := NewRange(q.client, q.key).FirstKey()
+	resp, err := q.client.Get(q.ctx, q.key, v3.WithFirstKey()...)
 	if err != nil {
 		return "", err
 	}
 
-	kv, err := claimFirstKey(q.client.KV, resp.Kvs)
+	kv, err := claimFirstKey(q.client, resp.Kvs)
 	if err != nil {
 		return "", err
 	} else if kv != nil {
@@ -63,12 +65,12 @@ func (q *PriorityQueue) Dequeue() (string, error) {
 		q.client,
 		q.key,
 		resp.Header.Revision,
-		[]storagepb.Event_EventType{storagepb.PUT})
+		[]mvccpb.Event_EventType{mvccpb.PUT})
 	if err != nil {
 		return "", err
 	}
 
-	ok, err := deleteRevKey(q.client.KV, string(ev.Kv.Key), ev.Kv.ModRevision)
+	ok, err := deleteRevKey(q.client, string(ev.Kv.Key), ev.Kv.ModRevision)
 	if err != nil {
 		return "", err
 	} else if !ok {

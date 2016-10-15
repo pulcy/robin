@@ -1,4 +1,4 @@
-// Copyright 2015 CoreOS, Inc.
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,10 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/etcd/Godeps/_workspace/src/github.com/jonboulle/clockwork"
 	etcdErr "github.com/coreos/etcd/error"
-	"github.com/coreos/etcd/pkg/testutil"
 	"github.com/coreos/etcd/pkg/types"
+	"github.com/jonboulle/clockwork"
 )
 
 // The default version to set when the store is first initialized.
@@ -43,12 +42,12 @@ type Store interface {
 	Index() uint64
 
 	Get(nodePath string, recursive, sorted bool) (*Event, error)
-	Set(nodePath string, dir bool, value string, expireTime time.Time) (*Event, error)
-	Update(nodePath string, newValue string, expireTime time.Time) (*Event, error)
+	Set(nodePath string, dir bool, value string, expireOpts TTLOptionSet) (*Event, error)
+	Update(nodePath string, newValue string, expireOpts TTLOptionSet) (*Event, error)
 	Create(nodePath string, dir bool, value string, unique bool,
-		expireTime time.Time) (*Event, error)
+		expireOpts TTLOptionSet) (*Event, error)
 	CompareAndSwap(nodePath string, prevValue string, prevIndex uint64,
-		value string, expireTime time.Time) (*Event, error)
+		value string, expireOpts TTLOptionSet) (*Event, error)
 	Delete(nodePath string, dir, recursive bool) (*Event, error)
 	CompareAndDelete(nodePath string, prevValue string, prevIndex uint64) (*Event, error)
 
@@ -64,6 +63,11 @@ type Store interface {
 	DeleteExpiredKeys(cutoff time.Time)
 }
 
+type TTLOptionSet struct {
+	ExpireTime time.Time
+	Refresh    bool
+}
+
 type store struct {
 	Root           *node
 	WatcherHub     *watcherHub
@@ -76,7 +80,7 @@ type store struct {
 	readonlySet    types.Set
 }
 
-// The given namespaces will be created as initial directories in the returned store.
+// New creates a store where the given namespaces will be created as initial directories.
 func New(namespaces ...string) Store {
 	s := newStore(namespaces...)
 	s.clock = clockwork.NewRealClock()
@@ -102,7 +106,7 @@ func (s *store) Version() int {
 	return s.CurrentVersion
 }
 
-// Retrieves current of the store
+// Index retrieves the current index of the store.
 func (s *store) Index() uint64 {
 	s.worldLock.RLock()
 	defer s.worldLock.RUnlock()
@@ -115,8 +119,8 @@ func (s *store) Index() uint64 {
 func (s *store) Get(nodePath string, recursive, sorted bool) (*Event, error) {
 	var err *etcdErr.Error
 
-	s.worldLock.Lock()
-	defer s.worldLock.Unlock()
+	s.worldLock.RLock()
+	defer s.worldLock.RUnlock()
 
 	defer func() {
 		if err == nil {
@@ -137,8 +141,6 @@ func (s *store) Get(nodePath string, recursive, sorted bool) (*Event, error) {
 		}
 	}()
 
-	nodePath = path.Clean(path.Join("/", nodePath))
-
 	n, err := s.internalGet(nodePath)
 	if err != nil {
 		return nil, err
@@ -154,7 +156,7 @@ func (s *store) Get(nodePath string, recursive, sorted bool) (*Event, error) {
 // Create creates the node at nodePath. Create will help to create intermediate directories with no ttl.
 // If the node has already existed, create will fail.
 // If any node on the path is a file, create will fail.
-func (s *store) Create(nodePath string, dir bool, value string, unique bool, expireTime time.Time) (*Event, error) {
+func (s *store) Create(nodePath string, dir bool, value string, unique bool, expireOpts TTLOptionSet) (*Event, error) {
 	var err *etcdErr.Error
 
 	s.worldLock.Lock()
@@ -171,7 +173,7 @@ func (s *store) Create(nodePath string, dir bool, value string, unique bool, exp
 		reportWriteFailure(Create)
 	}()
 
-	e, err := s.internalCreate(nodePath, dir, value, unique, false, expireTime, Create)
+	e, err := s.internalCreate(nodePath, dir, value, unique, false, expireOpts.ExpireTime, Create)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +185,7 @@ func (s *store) Create(nodePath string, dir bool, value string, unique bool, exp
 }
 
 // Set creates or replace the node at nodePath.
-func (s *store) Set(nodePath string, dir bool, value string, expireTime time.Time) (*Event, error) {
+func (s *store) Set(nodePath string, dir bool, value string, expireOpts TTLOptionSet) (*Event, error) {
 	var err *etcdErr.Error
 
 	s.worldLock.Lock()
@@ -207,8 +209,17 @@ func (s *store) Set(nodePath string, dir bool, value string, expireTime time.Tim
 		return nil, err
 	}
 
+	if expireOpts.Refresh {
+		if getErr != nil {
+			err = getErr
+			return nil, err
+		} else {
+			value = n.Value
+		}
+	}
+
 	// Set new value
-	e, err := s.internalCreate(nodePath, dir, value, false, true, expireTime, Set)
+	e, err := s.internalCreate(nodePath, dir, value, false, true, expireOpts.ExpireTime, Set)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +232,12 @@ func (s *store) Set(nodePath string, dir bool, value string, expireTime time.Tim
 		e.PrevNode = prev.Node
 	}
 
-	s.WatcherHub.notify(e)
+	if !expireOpts.Refresh {
+		s.WatcherHub.notify(e)
+	} else {
+		e.SetRefresh()
+		s.WatcherHub.add(e)
+	}
 
 	return e, nil
 }
@@ -239,7 +255,7 @@ func getCompareFailCause(n *node, which int, prevValue string, prevIndex uint64)
 }
 
 func (s *store) CompareAndSwap(nodePath string, prevValue string, prevIndex uint64,
-	value string, expireTime time.Time) (*Event, error) {
+	value string, expireOpts TTLOptionSet) (*Event, error) {
 
 	var err *etcdErr.Error
 
@@ -280,6 +296,10 @@ func (s *store) CompareAndSwap(nodePath string, prevValue string, prevIndex uint
 		return nil, err
 	}
 
+	if expireOpts.Refresh {
+		value = n.Value
+	}
+
 	// update etcd index
 	s.CurrentIndex++
 
@@ -290,14 +310,19 @@ func (s *store) CompareAndSwap(nodePath string, prevValue string, prevIndex uint
 
 	// if test succeed, write the value
 	n.Write(value, s.CurrentIndex)
-	n.UpdateTTL(expireTime)
+	n.UpdateTTL(expireOpts.ExpireTime)
 
 	// copy the value for safety
 	valueCopy := value
 	eNode.Value = &valueCopy
 	eNode.Expiration, eNode.TTL = n.expirationAndTTL(s.clock)
 
-	s.WatcherHub.notify(e)
+	if !expireOpts.Refresh {
+		s.WatcherHub.notify(e)
+	} else {
+		e.SetRefresh()
+		s.WatcherHub.add(e)
+	}
 
 	return e, nil
 }
@@ -328,7 +353,7 @@ func (s *store) Delete(nodePath string, dir, recursive bool) (*Event, error) {
 	}
 
 	// recursive implies dir
-	if recursive == true {
+	if recursive {
 		dir = true
 	}
 
@@ -462,7 +487,7 @@ func (s *store) walk(nodePath string, walkFunc func(prev *node, component string
 // Update updates the value/ttl of the node.
 // If the node is a file, the value and the ttl can be updated.
 // If the node is a directory, only the ttl can be updated.
-func (s *store) Update(nodePath string, newValue string, expireTime time.Time) (*Event, error) {
+func (s *store) Update(nodePath string, newValue string, expireOpts TTLOptionSet) (*Event, error) {
 	var err *etcdErr.Error
 
 	s.worldLock.Lock()
@@ -496,6 +521,10 @@ func (s *store) Update(nodePath string, newValue string, expireTime time.Time) (
 		return nil, etcdErr.NewError(etcdErr.EcodeNotFile, nodePath, currIndex)
 	}
 
+	if expireOpts.Refresh {
+		newValue = n.Value
+	}
+
 	e := newEvent(Update, nodePath, nextIndex, n.CreatedIndex)
 	e.EtcdIndex = nextIndex
 	e.PrevNode = n.Repr(false, false, s.clock)
@@ -512,11 +541,16 @@ func (s *store) Update(nodePath string, newValue string, expireTime time.Time) (
 	}
 
 	// update ttl
-	n.UpdateTTL(expireTime)
+	n.UpdateTTL(expireOpts.ExpireTime)
 
 	eNode.Expiration, eNode.TTL = n.expirationAndTTL(s.clock)
 
-	s.WatcherHub.notify(e)
+	if !expireOpts.Refresh {
+		s.WatcherHub.notify(e)
+	} else {
+		e.SetRefresh()
+		s.WatcherHub.add(e)
+	}
 
 	s.CurrentIndex = nextIndex
 
@@ -743,132 +777,4 @@ func (s *store) Recovery(state []byte) error {
 func (s *store) JsonStats() []byte {
 	s.Stats.Watchers = uint64(s.WatcherHub.count)
 	return s.Stats.toJson()
-}
-
-// StoreRecorder provides a Store interface with a testutil.Recorder
-type StoreRecorder struct {
-	Store
-	testutil.Recorder
-}
-
-// storeRecorder records all the methods it receives.
-// storeRecorder DOES NOT work as a actual store.
-// It always returns invalid empty response and no error.
-type storeRecorder struct {
-	Store
-	testutil.Recorder
-}
-
-func NewNop() Store { return &storeRecorder{Recorder: &testutil.RecorderBuffered{}} }
-func NewRecorder() *StoreRecorder {
-	sr := &storeRecorder{Recorder: &testutil.RecorderBuffered{}}
-	return &StoreRecorder{Store: sr, Recorder: sr.Recorder}
-}
-func NewRecorderStream() *StoreRecorder {
-	sr := &storeRecorder{Recorder: testutil.NewRecorderStream()}
-	return &StoreRecorder{Store: sr, Recorder: sr.Recorder}
-}
-
-func (s *storeRecorder) Version() int  { return 0 }
-func (s *storeRecorder) Index() uint64 { return 0 }
-func (s *storeRecorder) Get(path string, recursive, sorted bool) (*Event, error) {
-	s.Record(testutil.Action{
-		Name:   "Get",
-		Params: []interface{}{path, recursive, sorted},
-	})
-	return &Event{}, nil
-}
-func (s *storeRecorder) Set(path string, dir bool, val string, expr time.Time) (*Event, error) {
-	s.Record(testutil.Action{
-		Name:   "Set",
-		Params: []interface{}{path, dir, val, expr},
-	})
-	return &Event{}, nil
-}
-func (s *storeRecorder) Update(path, val string, expr time.Time) (*Event, error) {
-	s.Record(testutil.Action{
-		Name:   "Update",
-		Params: []interface{}{path, val, expr},
-	})
-	return &Event{}, nil
-}
-func (s *storeRecorder) Create(path string, dir bool, val string, uniq bool, exp time.Time) (*Event, error) {
-	s.Record(testutil.Action{
-		Name:   "Create",
-		Params: []interface{}{path, dir, val, uniq, exp},
-	})
-	return &Event{}, nil
-}
-func (s *storeRecorder) CompareAndSwap(path, prevVal string, prevIdx uint64, val string, expr time.Time) (*Event, error) {
-	s.Record(testutil.Action{
-		Name:   "CompareAndSwap",
-		Params: []interface{}{path, prevVal, prevIdx, val, expr},
-	})
-	return &Event{}, nil
-}
-func (s *storeRecorder) Delete(path string, dir, recursive bool) (*Event, error) {
-	s.Record(testutil.Action{
-		Name:   "Delete",
-		Params: []interface{}{path, dir, recursive},
-	})
-	return &Event{}, nil
-}
-func (s *storeRecorder) CompareAndDelete(path, prevVal string, prevIdx uint64) (*Event, error) {
-	s.Record(testutil.Action{
-		Name:   "CompareAndDelete",
-		Params: []interface{}{path, prevVal, prevIdx},
-	})
-	return &Event{}, nil
-}
-func (s *storeRecorder) Watch(_ string, _, _ bool, _ uint64) (Watcher, error) {
-	s.Record(testutil.Action{Name: "Watch"})
-	return NewNopWatcher(), nil
-}
-func (s *storeRecorder) Save() ([]byte, error) {
-	s.Record(testutil.Action{Name: "Save"})
-	return nil, nil
-}
-func (s *storeRecorder) Recovery(b []byte) error {
-	s.Record(testutil.Action{Name: "Recovery"})
-	return nil
-}
-
-func (s *storeRecorder) SaveNoCopy() ([]byte, error) {
-	s.Record(testutil.Action{Name: "SaveNoCopy"})
-	return nil, nil
-}
-
-func (s *storeRecorder) Clone() Store {
-	s.Record(testutil.Action{Name: "Clone"})
-	return s
-}
-
-func (s *storeRecorder) JsonStats() []byte { return nil }
-func (s *storeRecorder) DeleteExpiredKeys(cutoff time.Time) {
-	s.Record(testutil.Action{
-		Name:   "DeleteExpiredKeys",
-		Params: []interface{}{cutoff},
-	})
-}
-
-// errStoreRecorder is a storeRecorder, but returns the given error on
-// Get, Watch methods.
-type errStoreRecorder struct {
-	storeRecorder
-	err error
-}
-
-func NewErrRecorder(err error) *StoreRecorder {
-	sr := &errStoreRecorder{err: err}
-	sr.Recorder = &testutil.RecorderBuffered{}
-	return &StoreRecorder{Store: sr, Recorder: sr.Recorder}
-}
-
-func (s *errStoreRecorder) Get(path string, recursive, sorted bool) (*Event, error) {
-	s.storeRecorder.Get(path, recursive, sorted)
-	return nil, s.err
-}
-func (s *errStoreRecorder) Watch(path string, recursive, sorted bool, index uint64) (Watcher, error) {
-	s.storeRecorder.Watch(path, recursive, sorted, index)
-	return nil, s.err
 }

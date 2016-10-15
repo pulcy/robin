@@ -1,4 +1,4 @@
-// Copyright 2015 CoreOS, Inc.
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 package rafthttp
 
 import (
+	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -24,11 +25,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/etcd/Godeps/_workspace/src/github.com/coreos/go-semver/semver"
 	"github.com/coreos/etcd/pkg/transport"
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/coreos/etcd/raft/raftpb"
 	"github.com/coreos/etcd/version"
+	"github.com/coreos/go-semver/semver"
 )
 
 var (
@@ -38,8 +39,8 @@ var (
 
 // NewListener returns a listener for raft message transfer between peers.
 // It uses timeout listener to identify broken streams promptly.
-func NewListener(u url.URL, tlsInfo transport.TLSInfo) (net.Listener, error) {
-	return transport.NewTimeoutListener(u.Host, u.Scheme, tlsInfo, ConnReadTimeout, ConnWriteTimeout)
+func NewListener(u url.URL, tlscfg *tls.Config) (net.Listener, error) {
+	return transport.NewTimeoutListener(u.Host, u.Scheme, tlscfg, ConnReadTimeout, ConnWriteTimeout)
 }
 
 // NewRoundTripper returns a roundTripper used to send requests
@@ -86,7 +87,7 @@ func readEntryFrom(r io.Reader, ent *raftpb.Entry) error {
 }
 
 // createPostRequest creates a HTTP POST request that sends raft message.
-func createPostRequest(u url.URL, path string, body io.Reader, ct string, from, cid types.ID) *http.Request {
+func createPostRequest(u url.URL, path string, body io.Reader, ct string, urls types.URLs, from, cid types.ID) *http.Request {
 	uu := u
 	uu.Path = path
 	req, err := http.NewRequest("POST", uu.String(), body)
@@ -98,6 +99,8 @@ func createPostRequest(u url.URL, path string, body io.Reader, ct string, from, 
 	req.Header.Set("X-Server-Version", version.Version)
 	req.Header.Set("X-Min-Cluster-Version", version.MinClusterVersion)
 	req.Header.Set("X-Etcd-Cluster-ID", cid.String())
+	setPeerURLsHeader(req, urls)
+
 	return req
 }
 
@@ -186,4 +189,17 @@ func checkVersionCompability(name string, server, minCluster *semver.Version) er
 		return fmt.Errorf("local version is too low: remote[%s]=%s, local=%s", name, server, localServer)
 	}
 	return nil
+}
+
+// setPeerURLsHeader reports local urls for peer discovery
+func setPeerURLsHeader(req *http.Request, urls types.URLs) {
+	if urls == nil {
+		// often not set in unit tests
+		return
+	}
+	peerURLs := make([]string, urls.Len())
+	for i := range urls {
+		peerURLs[i] = urls[i].String()
+	}
+	req.Header.Set("X-PeerURLs", strings.Join(peerURLs, ","))
 }

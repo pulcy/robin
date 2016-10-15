@@ -18,9 +18,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	api "github.com/pulcy/robin-api"
 )
 
 type Backend interface {
+	api.API
+
 	// Watch for changes in the backend and return where there is a change.
 	Watch() error
 

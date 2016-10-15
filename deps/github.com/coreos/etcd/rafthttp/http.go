@@ -1,4 +1,4 @@
-// Copyright 2015 CoreOS, Inc.
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,12 +22,12 @@ import (
 	"path"
 	"strings"
 
-	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
 	pioutil "github.com/coreos/etcd/pkg/ioutil"
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/coreos/etcd/raft/raftpb"
 	"github.com/coreos/etcd/snap"
 	"github.com/coreos/etcd/version"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -59,6 +59,7 @@ type writerToResponse interface {
 }
 
 type pipelineHandler struct {
+	tr  Transporter
 	r   Raft
 	cid types.ID
 }
@@ -68,8 +69,9 @@ type pipelineHandler struct {
 //
 // The handler reads out the raft message from request body,
 // and forwards it to the given raft state machine for processing.
-func newPipelineHandler(r Raft, cid types.ID) http.Handler {
+func newPipelineHandler(tr Transporter, r Raft, cid types.ID) http.Handler {
 	return &pipelineHandler{
+		tr:  tr,
 		r:   r,
 		cid: cid,
 	}
@@ -89,6 +91,12 @@ func (h *pipelineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if from, err := types.IDFromString(r.Header.Get("X-Server-From")); err != nil {
+		if urls := r.Header.Get("X-PeerURLs"); urls != "" {
+			h.tr.AddRemote(from, strings.Split(urls, ","))
+		}
+	}
+
 	// Limit the data size that could be read from the request body, which ensures that read from
 	// connection will not time out accidentally due to possible blocking in underlying implementation.
 	limitedr := pioutil.NewLimitedBufferReader(r.Body, connReadLimitByte)
@@ -96,14 +104,20 @@ func (h *pipelineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		plog.Errorf("failed to read raft message (%v)", err)
 		http.Error(w, "error reading raft message", http.StatusBadRequest)
+		recvFailures.WithLabelValues(r.RemoteAddr).Inc()
 		return
 	}
+
 	var m raftpb.Message
 	if err := m.Unmarshal(b); err != nil {
 		plog.Errorf("failed to unmarshal raft message (%v)", err)
 		http.Error(w, "error unmarshaling raft message", http.StatusBadRequest)
+		recvFailures.WithLabelValues(r.RemoteAddr).Inc()
 		return
 	}
+
+	receivedBytes.WithLabelValues(types.ID(m.From).String()).Add(float64(len(b)))
+
 	if err := h.r.Process(context.TODO(), m); err != nil {
 		switch v := err.(type) {
 		case writerToResponse:
@@ -111,22 +125,28 @@ func (h *pipelineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		default:
 			plog.Warningf("failed to process raft message (%v)", err)
 			http.Error(w, "error processing raft message", http.StatusInternalServerError)
+			w.(http.Flusher).Flush()
+			// disconnect the http stream
+			panic(err)
 		}
 		return
 	}
+
 	// Write StatusNoContent header after the message has been processed by
 	// raft, which facilitates the client to report MsgSnap status.
 	w.WriteHeader(http.StatusNoContent)
 }
 
 type snapshotHandler struct {
+	tr          Transporter
 	r           Raft
 	snapshotter *snap.Snapshotter
 	cid         types.ID
 }
 
-func newSnapshotHandler(r Raft, snapshotter *snap.Snapshotter, cid types.ID) http.Handler {
+func newSnapshotHandler(tr Transporter, r Raft, snapshotter *snap.Snapshotter, cid types.ID) http.Handler {
 	return &snapshotHandler{
+		tr:          tr,
 		r:           r,
 		snapshotter: snapshotter,
 		cid:         cid,
@@ -156,14 +176,24 @@ func (h *snapshotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if from, err := types.IDFromString(r.Header.Get("X-Server-From")); err != nil {
+		if urls := r.Header.Get("X-PeerURLs"); urls != "" {
+			h.tr.AddRemote(from, strings.Split(urls, ","))
+		}
+	}
+
 	dec := &messageDecoder{r: r.Body}
 	m, err := dec.decode()
 	if err != nil {
 		msg := fmt.Sprintf("failed to decode raft message (%v)", err)
 		plog.Errorf(msg)
 		http.Error(w, msg, http.StatusBadRequest)
+		recvFailures.WithLabelValues(r.RemoteAddr).Inc()
 		return
 	}
+
+	receivedBytes.WithLabelValues(types.ID(m.From).String()).Add(float64(m.Size()))
+
 	if m.Type != raftpb.MsgSnap {
 		plog.Errorf("unexpected raft message type %s on snapshot path", m.Type)
 		http.Error(w, "wrong raft message type", http.StatusBadRequest)
@@ -172,12 +202,14 @@ func (h *snapshotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	plog.Infof("receiving database snapshot [index:%d, from %s] ...", m.Snapshot.Metadata.Index, types.ID(m.From))
 	// save incoming database snapshot.
-	if err := h.snapshotter.SaveDBFrom(r.Body, m.Snapshot.Metadata.Index); err != nil {
+	n, err := h.snapshotter.SaveDBFrom(r.Body, m.Snapshot.Metadata.Index)
+	if err != nil {
 		msg := fmt.Sprintf("failed to save KV snapshot (%v)", err)
 		plog.Error(msg)
 		http.Error(w, msg, http.StatusInternalServerError)
 		return
 	}
+	receivedBytes.WithLabelValues(types.ID(m.From).String()).Add(float64(n))
 	plog.Infof("received and saved database snapshot [index: %d, from: %s] successfully", m.Snapshot.Metadata.Index, types.ID(m.From))
 
 	if err := h.r.Process(context.TODO(), m); err != nil {
@@ -257,18 +289,14 @@ func (h *streamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	p := h.peerGetter.Get(from)
 	if p == nil {
-		if urls := r.Header.Get("X-Server-Peers"); urls != "" {
-			h.tr.AddPeer(from, strings.Split(urls, ","))
-		}
-		p = h.peerGetter.Get(from)
-	}
-
-	if p == nil {
 		// This may happen in following cases:
 		// 1. user starts a remote peer that belongs to a different cluster
 		// with the same cluster ID.
 		// 2. local etcd falls behind of the cluster, and cannot recognize
 		// the members that joined after its current progress.
+		if urls := r.Header.Get("X-PeerURLs"); urls != "" {
+			h.tr.AddRemote(from, strings.Split(urls, ","))
+		}
 		plog.Errorf("failed to find member %s in cluster %s", from, h.cid)
 		http.Error(w, "error sender not found", http.StatusNotFound)
 		return

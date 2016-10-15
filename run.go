@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -25,6 +26,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/pulcy/robin/metrics"
+	"github.com/pulcy/robin/middleware"
 	"github.com/pulcy/robin/service"
 	"github.com/pulcy/robin/service/acme"
 	"github.com/pulcy/robin/service/backend"
@@ -73,6 +75,10 @@ var (
 		metricsHost      string
 		metricsPort      int
 		privateStatsPort int
+
+		// api
+		apiHost string
+		apiPort int
 	}
 )
 
@@ -98,6 +104,7 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.privateTcpSslCert, "private-ssl-cert", defaultPrivateTcpSslCert, "Filename of SSL certificate for private TCP connections (located in ssl-certs)")
 	cmdRun.Flags().BoolVar(&runArgs.excludePrivate, "exclude-private", false, "Exclude private frontends")
 	cmdRun.Flags().BoolVar(&runArgs.excludePublic, "exclude-public", false, "Exclude public frontends")
+
 	// acme
 	cmdRun.Flags().IntVar(&runArgs.acmeHttpPort, "acme-http-port", defaultAcmeHttpPort, "Port to listen for ACME HTTP challenges on (internally)")
 	cmdRun.Flags().StringVar(&runArgs.acmeEmail, "acme-email", defaultAcmeEmail, "Email account for ACME server")
@@ -107,9 +114,14 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.registrationPath, "registration-path", defaultRegistrationPath(), "Path of the registration resource for the registered account")
 	cmdRun.Flags().StringVar(&runArgs.tmpCertificatePath, "tmp-certificate-path", defaultTmpCertificatePath, "Path of obtained tmp certificates")
 
+	// metrics
 	cmdRun.Flags().StringVar(&runArgs.metricsHost, "metrics-host", defaultMetricsHost, "Host address to listen for metrics requests")
 	cmdRun.Flags().IntVar(&runArgs.metricsPort, "metrics-port", defaultMetricsPort, "Port to listen for metrics requests")
 	cmdRun.Flags().IntVar(&runArgs.privateStatsPort, "private-stats-port", defaultPrivateStatsPort, "HAProxy port CSV stats")
+
+	// api
+	cmdRun.Flags().StringVar(&runArgs.apiHost, "api-host", defaultApiHost, "Host address to listen for API requests")
+	cmdRun.Flags().IntVar(&runArgs.apiPort, "api-port", defaultApiPort, "Port to listen for API requests")
 
 	cmdMain.AddCommand(cmdRun)
 }
@@ -204,6 +216,20 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		AcmeService: acmeService,
 	})
 	acmeServiceListener.service = service
+
+	// Prepare and run middleware
+	apiMiddleware := middleware.Middleware{
+		Logger:  log,
+		Service: backend,
+	}
+	apiAddr := fmt.Sprintf("%s:%d", runArgs.apiHost, runArgs.apiPort)
+	apiHandler := apiMiddleware.SetupRoutes(projectName, projectVersion, projectBuild)
+	log.Infof("Starting %s API (version %s build %s) on %s\n", projectName, projectVersion, projectBuild, apiAddr)
+	go func() {
+		if err := http.ListenAndServe(apiAddr, apiHandler); err != nil {
+			log.Fatalf("API ListenAndServe failed: %#v", err)
+		}
+	}()
 
 	// Start all services
 	if err := acmeService.Start(); err != nil {

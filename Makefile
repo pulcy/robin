@@ -57,6 +57,7 @@ update-vendor:
 		github.com/op/go-logging \
 		github.com/pulcy/macaron-utils \
 		github.com/pulcy/registrator-api \
+		github.com/pulcy/rest-kit \
 		github.com/pulcy/robin-api \
 		github.com/spf13/cobra \
 		github.com/spf13/pflag \

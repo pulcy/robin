@@ -1,4 +1,4 @@
-// Copyright 2016 CoreOS, Inc.
+// Copyright 2016 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,21 +15,22 @@
 package recipe
 
 import (
-	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/coreos/etcd/clientv3"
-	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
-	"github.com/coreos/etcd/storage/storagepb"
+	v3 "github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/mvcc/mvccpb"
+	"golang.org/x/net/context"
 )
 
 // Barrier creates a key in etcd to block processes, then deletes the key to
 // release all blocked processes.
 type Barrier struct {
-	client *clientv3.Client
-	key    string
+	client *v3.Client
+	ctx    context.Context
+
+	key string
 }
 
-func NewBarrier(client *clientv3.Client, key string) *Barrier {
-	return &Barrier{client, key}
+func NewBarrier(client *v3.Client, key string) *Barrier {
+	return &Barrier{client, context.TODO(), key}
 }
 
 // Hold creates the barrier key causing processes to block on Wait.
@@ -40,14 +41,14 @@ func (b *Barrier) Hold() error {
 
 // Release deletes the barrier key to unblock all waiting processes.
 func (b *Barrier) Release() error {
-	_, err := b.client.KV.DeleteRange(context.TODO(), &pb.DeleteRangeRequest{Key: []byte(b.key)})
+	_, err := b.client.Delete(b.ctx, b.key)
 	return err
 }
 
 // Wait blocks on the barrier key until it is deleted. If there is no key, Wait
 // assumes Release has already been called and returns immediately.
 func (b *Barrier) Wait() error {
-	resp, err := NewRange(b.client, b.key).FirstKey()
+	resp, err := b.client.Get(b.ctx, b.key, v3.WithFirstKey()...)
 	if err != nil {
 		return err
 	}
@@ -59,6 +60,6 @@ func (b *Barrier) Wait() error {
 		b.client,
 		b.key,
 		resp.Header.Revision,
-		[]storagepb.Event_EventType{storagepb.PUT, storagepb.DELETE})
+		[]mvccpb.Event_EventType{mvccpb.PUT, mvccpb.DELETE})
 	return err
 }

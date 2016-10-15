@@ -1,4 +1,4 @@
-// Copyright 2015 CoreOS, Inc.
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/pkg/report"
 )
 
 var (
@@ -30,19 +31,30 @@ var (
 )
 
 func mustCreateConn() *clientv3.Client {
-	eps := strings.Split(endpoints, ",")
-	endpoint := eps[dialTotal%len(eps)]
+	endpoint := endpoints[dialTotal%len(endpoints)]
 	dialTotal++
-	cfgtls := &tls
-	if cfgtls.Empty() {
-		cfgtls = nil
+	cfg := clientv3.Config{Endpoints: []string{endpoint}}
+	if !tls.Empty() {
+		cfgtls, err := tls.ClientConfig()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "bad tls config: %v\n", err)
+			os.Exit(1)
+		}
+		cfg.TLS = cfgtls
 	}
-	client, err := clientv3.New(
-		clientv3.Config{
-			Endpoints: []string{endpoint},
-			TLS:       cfgtls,
-		},
-	)
+
+	if len(user) != 0 {
+		splitted := strings.SplitN(user, ":", 2)
+		if len(splitted) != 2 {
+			fmt.Fprintf(os.Stderr, "bad user information: %s\n", user)
+			os.Exit(1)
+		}
+
+		cfg.Username = splitted[0]
+		cfg.Password = splitted[1]
+	}
+
+	client, err := clientv3.New(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "dial error: %v\n", err)
 		os.Exit(1)
@@ -71,4 +83,15 @@ func mustRandBytes(n int) []byte {
 		os.Exit(1)
 	}
 	return rb
+}
+
+func newReport() report.Report {
+	p := "%4.4f"
+	if precise {
+		p = "%g"
+	}
+	if sample {
+		return report.NewReportSample(p)
+	}
+	return report.NewReport(p)
 }
