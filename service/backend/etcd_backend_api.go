@@ -19,15 +19,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"regexp"
 
 	"github.com/coreos/etcd/client"
 	"github.com/juju/errgo"
 	api "github.com/pulcy/robin-api"
 )
 
+var (
+	idRegexp = regexp.MustCompile("^[a-zA-Z0-9_-]+$")
+)
+
 // Add adds a given frontend record with given ID to the list of frontends.
 // If the given ID already exists, a DuplicateIDError is returned.
 func (eb *etcdBackend) Add(id string, record api.FrontendRecord) error {
+	if err := validateID(id); err != nil {
+		return maskAny(err)
+	}
+	if err := record.Validate(); err != nil {
+		return maskAny(err)
+	}
 	etcdPath := path.Join(eb.prefix, frontEndPrefix, id)
 	kAPI := client.NewKeysAPI(eb.client)
 	options := &client.SetOptions{
@@ -50,6 +61,9 @@ func (eb *etcdBackend) Add(id string, record api.FrontendRecord) error {
 // Remove a frontend with given ID.
 // If the ID is not found, an IDNotFoundError is returned.
 func (eb *etcdBackend) Remove(id string) error {
+	if err := validateID(id); err != nil {
+		return maskAny(err)
+	}
 	etcdPath := path.Join(eb.prefix, frontEndPrefix, id)
 	kAPI := client.NewKeysAPI(eb.client)
 	options := &client.DeleteOptions{
@@ -103,6 +117,9 @@ func (eb *etcdBackend) All() (map[string]api.FrontendRecord, error) {
 // Get returns the frontend record for the given id.
 // If the ID is not found, an IDNotFoundError is returned.
 func (eb *etcdBackend) Get(id string) (api.FrontendRecord, error) {
+	if err := validateID(id); err != nil {
+		return api.FrontendRecord{}, maskAny(err)
+	}
 	etcdPath := path.Join(eb.prefix, frontEndPrefix, id)
 	kAPI := client.NewKeysAPI(eb.client)
 	options := &client.GetOptions{
@@ -127,4 +144,11 @@ func (eb *etcdBackend) Get(id string) (api.FrontendRecord, error) {
 	}
 
 	return record, nil
+}
+
+func validateID(id string) error {
+	if !idRegexp.MatchString(id) {
+		return maskAny(errgo.WithCausef(nil, api.ValidationError, "invalid ID '%s'", id))
+	}
+	return nil
 }
