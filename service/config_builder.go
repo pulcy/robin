@@ -146,10 +146,11 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 					if certPath == "" {
 						certPath = filepath.Join(s.SslCertsFolder, sel.SslCertName)
 					}
-					if _, ok := certsSet[certPath]; !ok {
-						crt := fmt.Sprintf("crt %s", certPath)
+					certFolder := filepath.Dir(certPath)
+					if _, ok := certsSet[certFolder]; !ok {
+						crt := fmt.Sprintf("crt %s", certFolder)
 						certs = append(certs, crt)
-						certsSet[certPath] = struct{}{}
+						certsSet[certFolder] = struct{}{}
 					}
 				}
 			}
