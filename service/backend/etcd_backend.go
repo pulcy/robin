@@ -17,7 +17,6 @@ package backend
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"path"
 
 	"github.com/coreos/etcd/client"
@@ -50,12 +49,10 @@ type etcdBackend struct {
 	recentWatchErrors int
 }
 
-func NewEtcdBackend(config BackendConfig, logger *logging.Logger, uri *url.URL) (Backend, error) {
+func NewEtcdBackend(config BackendConfig, logger *logging.Logger, endpoints []string, etcdPath string) (Backend, error) {
 	cfg := client.Config{
 		Transport: client.DefaultTransport,
-	}
-	if uri.Host != "" {
-		cfg.Endpoints = append(cfg.Endpoints, "http://"+uri.Host)
+		Endpoints: endpoints,
 	}
 	c, err := client.New(cfg)
 	if err != nil {
@@ -65,17 +62,17 @@ func NewEtcdBackend(config BackendConfig, logger *logging.Logger, uri *url.URL) 
 	options := &client.WatcherOptions{
 		Recursive: true,
 	}
-	registratorAPI, err := regapi.NewRegistratorClient(c, path.Join(uri.Path, servicePrefix), logger)
+	registratorAPI, err := regapi.NewRegistratorClient(c, path.Join(etcdPath, servicePrefix), logger)
 	if err != nil {
 		return nil, maskAny(err)
 	}
-	watcher := kAPI.Watcher(uri.Path, options)
+	watcher := kAPI.Watcher(etcdPath, options)
 	return &etcdBackend{
 		config:         config,
 		client:         c,
 		watcher:        watcher,
 		registratorAPI: registratorAPI,
-		prefix:         uri.Path,
+		prefix:         etcdPath,
 		Logger:         logger,
 	}, nil
 }

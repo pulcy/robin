@@ -49,6 +49,8 @@ var (
 	runArgs struct {
 		logLevel          string
 		etcdAddr          string
+		etcdEndpoints     []string
+		etcdPath          string
 		haproxyConfPath   string
 		statsPort         int
 		statsUser         string
@@ -92,6 +94,8 @@ func init() {
 	defaultStatsUser := os.Getenv("STATS_USER")
 	cmdRun.Flags().StringVar(&runArgs.logLevel, "log-level", defaultLogLevel, "Log level (debug|info|warning|error)")
 	cmdRun.Flags().StringVar(&runArgs.etcdAddr, "etcd-addr", "", "Address of etcd backend")
+	cmdRun.Flags().StringSliceVar(&runArgs.etcdEndpoints, "etcd-endpoint", nil, "Etcd client endpoints")
+	cmdRun.Flags().StringVar(&runArgs.etcdPath, "etcd-path", "", "Path into etcd namespace")
 	cmdRun.Flags().StringVar(&runArgs.haproxyConfPath, "haproxy-conf", "/data/config/haproxy.cfg", "Path of haproxy config file")
 	cmdRun.Flags().IntVar(&runArgs.statsPort, "stats-port", defaultStatsPort, "Port for stats page")
 	cmdRun.Flags().StringVar(&runArgs.statsUser, "stats-user", defaultStatsUser, "User for stats page")
@@ -128,15 +132,16 @@ func init() {
 
 func cmdRunRun(cmd *cobra.Command, args []string) {
 	// Parse arguments
-	if runArgs.etcdAddr == "" {
-		Exitf("Please specify --etcd-addr")
-	}
-	etcdUrl, err := url.Parse(runArgs.etcdAddr)
-	if err != nil {
-		Exitf("--etcd-addr '%s' is not valid: %#v", runArgs.etcdAddr, err)
+	if runArgs.etcdAddr != "" {
+		etcdUrl, err := url.Parse(runArgs.etcdAddr)
+		if err != nil {
+			Exitf("--etcd-addr '%s' is not valid: %#v", runArgs.etcdAddr, err)
+		}
+		runArgs.etcdEndpoints = []string{fmt.Sprintf("%s://%s", etcdUrl.Scheme, etcdUrl.Host)}
+		runArgs.etcdPath = etcdUrl.Path
 	}
 	etcdCfg := client.Config{
-		Endpoints: []string{"http://" + etcdUrl.Host},
+		Endpoints: runArgs.etcdEndpoints,
 		Transport: client.DefaultTransport,
 	}
 	etcdClient, err := client.New(etcdCfg)
@@ -152,16 +157,16 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	logging.SetLevel(level, cmdMain.Use)
 
 	// Prepare backend
-	backend, err := backend.NewEtcdBackend(etcdBackendConfig, log, etcdUrl)
+	backend, err := backend.NewEtcdBackend(etcdBackendConfig, log, runArgs.etcdEndpoints, runArgs.etcdPath)
 	if err != nil {
 		Exitf("Failed to backend: %#v", err)
 	}
 
 	// Prepare global mutext service
-	gmService := mutex.NewEtcdGlobalMutexService(etcdClient, path.Join(etcdUrl.Path, etcdLocksFolder))
+	gmService := mutex.NewEtcdGlobalMutexService(etcdClient, path.Join(runArgs.etcdPath, etcdLocksFolder))
 
 	// Prepare acme service
-	acmeEtcdPrefix := path.Join(etcdUrl.Path, etcdAcmeFolder)
+	acmeEtcdPrefix := path.Join(runArgs.etcdPath, etcdAcmeFolder)
 	certsRepository := acme.NewEtcdCertificatesRepository(acmeEtcdPrefix, etcdClient)
 	certsCache := acme.NewCertificatesFileCache(runArgs.tmpCertificatePath, certsRepository, log)
 	certsRequester := acme.NewCertificateRequester(log, certsRepository, gmService)
