@@ -49,15 +49,7 @@ type etcdBackend struct {
 	recentWatchErrors int
 }
 
-func NewEtcdBackend(config BackendConfig, logger *logging.Logger, endpoints []string, etcdPath string) (Backend, error) {
-	cfg := client.Config{
-		Transport: client.DefaultTransport,
-		Endpoints: endpoints,
-	}
-	c, err := client.New(cfg)
-	if err != nil {
-		return nil, maskAny(err)
-	}
+func NewEtcdBackend(config BackendConfig, logger *logging.Logger, c client.Client, etcdPath string) (Backend, error) {
 	kAPI := client.NewKeysAPI(c)
 	options := &client.WatcherOptions{
 		Recursive: true,

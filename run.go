@@ -15,11 +15,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
+	"time"
 
 	"github.com/coreos/etcd/client"
 	"github.com/op/go-logging"
@@ -149,6 +151,8 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		Exitf("Failed to initialize ETCD client: %#v", err)
 	}
 
+	go etcdClient.AutoSync(context.Background(), time.Second*30)
+
 	// Set log level
 	level, err := logging.LogLevel(runArgs.logLevel)
 	if err != nil {
@@ -157,7 +161,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	logging.SetLevel(level, cmdMain.Use)
 
 	// Prepare backend
-	backend, err := backend.NewEtcdBackend(etcdBackendConfig, log, runArgs.etcdEndpoints, runArgs.etcdPath)
+	backend, err := backend.NewEtcdBackend(etcdBackendConfig, log, etcdClient, runArgs.etcdPath)
 	if err != nil {
 		Exitf("Failed to backend: %#v", err)
 	}
