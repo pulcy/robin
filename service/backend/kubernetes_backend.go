@@ -213,9 +213,11 @@ func (eb *k8sBackend) listIngresses() ([]k8s.Ingress, error) {
 // listServicePodIPs returns the IP addresses of all pods that match the service name in the given ingress backend.
 func (eb *k8sBackend) listServicePodIPs(backend k8s.IngressBackend, i k8s.Ingress) ([]string, error) {
 	// Find service
+	eb.Logger.Infof("Fetching IPs for service '%s' in '%s'", backend.ServiceName, i.GetNamespace())
 	srv, err := eb.client.GetService(i.GetNamespace(), backend.ServiceName)
 	if err != nil {
 		// Service not yet known, just return an empty list
+		eb.Logger.Warningf("Cannot find service '%s' in '%s'", backend.ServiceName, i.GetNamespace())
 		return nil, nil
 	}
 	selector := srv.Spec.Selector
@@ -226,6 +228,7 @@ func (eb *k8sBackend) listServicePodIPs(backend k8s.IngressBackend, i k8s.Ingres
 		},
 	})
 	if err != nil {
+		eb.Logger.Warningf("Failed to list pods for service '%s' in '%s': %#v", backend.ServiceName, i.GetNamespace(), err)
 		return nil, maskAny(err)
 	}
 	// Get IP's of pods
@@ -236,6 +239,7 @@ func (eb *k8sBackend) listServicePodIPs(backend k8s.IngressBackend, i k8s.Ingres
 			result = append(result, status.PodIP)
 		}
 	}
+	eb.Logger.Debugf("Found %d IP's for service '%s' in '%s'", len(result), backend.ServiceName, i.GetNamespace())
 	return result, nil
 }
 
