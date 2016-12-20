@@ -109,10 +109,6 @@ func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (Serv
 		}
 		host := rule.Host
 		for _, httpPath := range rule.HTTP.Paths {
-			instance := ServiceInstance{
-				IP:   httpPath.Backend.ServiceName,
-				Port: httpPath.Backend.ServicePort.IntValue(),
-			}
 			selector := ServiceSelector{
 				Domain: host,
 			}
@@ -120,9 +116,8 @@ func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (Serv
 				selector.PathPrefix = httpPath.Path
 			}
 			sr := ServiceRegistration{
-				ServiceName:     fmt.Sprintf("%s-%s", httpPath.Backend.ServiceName, hashOf(host, httpPath.Path, httpPath.Backend.ServiceName, httpPath.Backend.ServicePort.String())),
+				ServiceName:     fmt.Sprintf("%s-%s-%s", i.GetNamespace(), httpPath.Backend.ServiceName, hashOf(host, httpPath.Path, httpPath.Backend.ServiceName, httpPath.Backend.ServicePort.String())),
 				ServicePort:     httpPath.Backend.ServicePort.IntValue(),
-				Instances:       ServiceInstances{instance},
 				Selectors:       ServiceSelectors{selector},
 				EdgePort:        eb.config.PublicEdgePort,
 				Public:          true,
@@ -132,6 +127,17 @@ func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (Serv
 				Sticky:          false,
 				Backup:          false,
 			}
+			ips, err := eb.listServicePodIPs(httpPath.Backend, i)
+			if err != nil {
+				return nil, maskAny(err)
+			}
+			for _, ip := range ips {
+				sr.Instances = append(sr.Instances, ServiceInstance{
+					IP:   ip,
+					Port: httpPath.Backend.ServicePort.IntValue(),
+				})
+			}
+
 			result = append(result, sr)
 		}
 	}
@@ -142,31 +148,40 @@ func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (Serv
 func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecord(i k8s.Ingress, record api.FrontendRecord) (ServiceRegistrations, error) {
 	var serviceMap map[string]struct{}
 	var services []regapi.Service
-	createService := func(backend k8s.IngressBackend) {
-		key := fmt.Sprintf("%s-%s", backend.ServiceName, backend.ServicePort.String())
+	createService := func(backend k8s.IngressBackend) error {
+		key := fmt.Sprintf("%s-%s-%s", i.GetNamespace(), backend.ServiceName, backend.ServicePort.String())
 		if _, found := serviceMap[key]; !found {
+			ips, err := eb.listServicePodIPs(backend, i)
+			if err != nil {
+				return maskAny(err)
+			}
 			service := regapi.Service{
 				ServiceName: backend.ServiceName,
 				ServicePort: backend.ServicePort.IntValue(),
-				Instances: []regapi.ServiceInstance{
-					regapi.ServiceInstance{
-						IP:   backend.ServiceName,
-						Port: backend.ServicePort.IntValue(),
-					},
-				},
+			}
+			for _, ip := range ips {
+				service.Instances = append(service.Instances, regapi.ServiceInstance{
+					IP:   ip,
+					Port: backend.ServicePort.IntValue(),
+				})
 			}
 			serviceMap[key] = struct{}{}
 			services = append(services, service)
 		}
+		return nil
 	}
 
 	if i.Spec.Backend != nil {
-		createService(*i.Spec.Backend)
+		if err := createService(*i.Spec.Backend); err != nil {
+			return nil, maskAny(err)
+		}
 	}
 	for _, rule := range i.Spec.Rules {
 		if rule.HTTP != nil {
 			for _, httpPath := range rule.HTTP.Paths {
-				createService(httpPath.Backend)
+				if err := createService(httpPath.Backend); err != nil {
+					return nil, maskAny(err)
+				}
 			}
 		}
 	}
@@ -195,7 +210,40 @@ func (eb *k8sBackend) listIngresses() ([]k8s.Ingress, error) {
 	return all, nil
 }
 
+// listServicePodIPs returns the IP addresses of all pods that match the service name in the given ingress backend.
+func (eb *k8sBackend) listServicePodIPs(backend k8s.IngressBackend, i k8s.Ingress) ([]string, error) {
+	// Find service
+	srv, err := eb.client.GetService(i.GetNamespace(), backend.ServiceName)
+	if err != nil {
+		// Service not yet known, just return an empty list
+		return nil, nil
+	}
+	selector := srv.Spec.Selector
+	// Find matching pods
+	pods, err := eb.client.ListPods(i.GetNamespace(), &k8s.ListOptions{
+		LabelSelector: k8s.LabelSelector{
+			MatchLabels: selector,
+		},
+	})
+	if err != nil {
+		return nil, maskAny(err)
+	}
+	// Get IP's of pods
+	result := make([]string, 0, len(pods.Items))
+	for _, p := range pods.Items {
+		status := p.Status
+		if status != nil {
+			result = append(result, status.PodIP)
+		}
+	}
+	return result, nil
+}
+
 func hashOf(s ...string) string {
 	all := strings.Join(s, ",")
 	return fmt.Sprintf("%x", sha1.Sum([]byte(all)))[:8]
+}
+
+func createHostName(backend k8s.IngressBackend, i k8s.Ingress) string {
+	return fmt.Sprintf("%s.%s", backend.ServiceName, i.GetNamespace())
 }
