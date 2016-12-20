@@ -49,6 +49,7 @@ var (
 	}
 
 	runArgs struct {
+		backend           string
 		logLevel          string
 		etcdAddr          string
 		etcdEndpoints     []string
@@ -94,6 +95,7 @@ func init() {
 	defaultAcmeEmail := os.Getenv("ACME_EMAIL")
 	defaultStatsPassword := os.Getenv("STATS_PASSWORD")
 	defaultStatsUser := os.Getenv("STATS_USER")
+	cmdRun.Flags().StringVar(&runArgs.backend, "backend", defaultBackend, "Used backend (etcd|kubernetes)")
 	cmdRun.Flags().StringVar(&runArgs.logLevel, "log-level", defaultLogLevel, "Log level (debug|info|warning|error)")
 	cmdRun.Flags().StringVar(&runArgs.etcdAddr, "etcd-addr", "", "Address of etcd backend")
 	cmdRun.Flags().StringSliceVar(&runArgs.etcdEndpoints, "etcd-endpoint", nil, "Etcd client endpoints")
@@ -161,9 +163,20 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	logging.SetLevel(level, cmdMain.Use)
 
 	// Prepare backend
-	backend, err := backend.NewEtcdBackend(etcdBackendConfig, log, etcdClient, runArgs.etcdPath)
-	if err != nil {
-		Exitf("Failed to backend: %#v", err)
+	var b backend.Backend
+	switch runArgs.backend {
+	case "etcd":
+		b, err = backend.NewEtcdBackend(etcdBackendConfig, log, etcdClient, runArgs.etcdPath)
+		if err != nil {
+			Exitf("Failed to create ETCD backend: %#v", err)
+		}
+	case "kubernetes":
+		b, err = backend.NewKubernetesBackend(etcdBackendConfig, log)
+		if err != nil {
+			Exitf("Failed to create Kubernetes backend: %#v", err)
+		}
+	default:
+		Exitf("Unknown backend: '%s'", runArgs.backend)
 	}
 
 	// Prepare global mutext service
@@ -221,7 +234,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		ExcludePublic:     runArgs.excludePublic,
 	}, service.ServiceDependencies{
 		Logger:      log,
-		Backend:     backend,
+		Backend:     b,
 		AcmeService: acmeService,
 	})
 	acmeServiceListener.service = service
@@ -229,7 +242,7 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 	// Prepare and run middleware
 	apiMiddleware := middleware.Middleware{
 		Logger:  log,
-		Service: backend,
+		Service: b,
 	}
 	apiAddr := fmt.Sprintf("%s:%d", runArgs.apiHost, runArgs.apiPort)
 	apiHandler := apiMiddleware.SetupRoutes(projectName, projectVersion, projectBuild)

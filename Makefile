@@ -62,6 +62,7 @@ update-vendor:
 		github.com/spf13/cobra \
 		github.com/spf13/pflag \
 		github.com/xenolf/lego \
+		github.com/YakLabs/k8s-client \
 		gopkg.in/macaron.v1
 
 $(BIN): $(GOBUILDDIR) $(SOURCES)
