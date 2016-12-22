@@ -36,6 +36,7 @@ type k8sBackend struct {
 	config         BackendConfig
 	client         k8s.Client
 	Logger         *logging.Logger
+	services       ServiceRegistrations
 	lastKnownState string
 }
 
@@ -54,14 +55,18 @@ func NewKubernetesBackend(config BackendConfig, logger *logging.Logger) (Backend
 // Watch for changes on a path and return where there is a change.
 func (eb *k8sBackend) Watch() error {
 	for {
-		list, err := eb.Services()
+		list, err := eb.createServices()
 		if err != nil {
 			return maskAny(err)
 		}
 		state := list.FullString()
 		if state == eb.lastKnownState {
-			time.Sleep(time.Second * 30)
+			eb.Logger.Debugf("Watch: state remains the same")
+			time.Sleep(time.Second * 10)
 		} else {
+			eb.lastKnownState = state
+			eb.services = list
+			eb.Logger.Debugf("Watch: state has changed")
 			return nil
 		}
 	}
@@ -69,6 +74,11 @@ func (eb *k8sBackend) Watch() error {
 
 // Load all registered services
 func (eb *k8sBackend) Services() (ServiceRegistrations, error) {
+	return eb.services, nil
+}
+
+// Load all registered services
+func (eb *k8sBackend) createServices() (ServiceRegistrations, error) {
 	ingresses, err := eb.listIngresses()
 	if err != nil {
 		return nil, maskAny(err)
