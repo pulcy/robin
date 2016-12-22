@@ -245,7 +245,7 @@ func (eb *k8sBackend) listServicePodIPs(backend k8s.IngressBackend, i k8s.Ingres
 	result := make([]string, 0, len(pods.Items))
 	for _, p := range pods.Items {
 		status := p.Status
-		if status != nil {
+		if status != nil && status.Phase == k8s.PodRunning {
 			result = append(result, status.PodIP)
 		}
 	}
