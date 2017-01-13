@@ -54,6 +54,7 @@ var (
 		etcdAddr          string
 		etcdEndpoints     []string
 		etcdPath          string
+		etcdNoSync        bool
 		haproxyConfPath   string
 		statsPort         int
 		statsUser         string
@@ -100,6 +101,7 @@ func init() {
 	cmdRun.Flags().StringVar(&runArgs.etcdAddr, "etcd-addr", "", "Address of etcd backend")
 	cmdRun.Flags().StringSliceVar(&runArgs.etcdEndpoints, "etcd-endpoint", nil, "Etcd client endpoints")
 	cmdRun.Flags().StringVar(&runArgs.etcdPath, "etcd-path", "", "Path into etcd namespace")
+	cmdRun.Flags().BoolVar(&runArgs.etcdNoSync, "etcd-no-sync", false, "If set, Robin will not sync the ETCD endpoints")
 	cmdRun.Flags().StringVar(&runArgs.haproxyConfPath, "haproxy-conf", "/data/config/haproxy.cfg", "Path of haproxy config file")
 	cmdRun.Flags().IntVar(&runArgs.statsPort, "stats-port", defaultStatsPort, "Port for stats page")
 	cmdRun.Flags().StringVar(&runArgs.statsUser, "stats-user", defaultStatsUser, "User for stats page")
@@ -153,7 +155,9 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		Exitf("Failed to initialize ETCD client: %#v", err)
 	}
 
-	go etcdClient.AutoSync(context.Background(), time.Second*30)
+	if !runArgs.etcdNoSync {
+		go etcdClient.AutoSync(context.Background(), time.Second*30)
+	}
 
 	// Set log level
 	level, err := logging.LogLevel(runArgs.logLevel)
