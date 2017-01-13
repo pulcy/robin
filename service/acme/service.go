@@ -16,6 +16,7 @@ package acme
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/xenolf/lego/acme"
 
@@ -152,9 +153,15 @@ func (s *acmeService) Start() error {
 func (s *acmeService) repositoryMonitorLoop() {
 	go func() {
 		for {
+			start := time.Now()
 			s.Cache.Clear()
 			s.Listener.CertificatesUpdated()
 			s.Repository.WatchDomainCertificates()
+
+			// Prevent hammering the system
+			if time.Since(start) < time.Second*5 {
+				time.Sleep(time.Second * 5)
+			}
 		}
 	}()
 }

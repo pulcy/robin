@@ -208,7 +208,8 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		frontendSection.Add(bind)
 		var secureFrontendSection *haproxy.Section
 		frontendSections := []*haproxy.Section{frontendSection}
-		if frontend.Public && frontend.Port == PublicHttpPort && frontend.IsHTTP() && len(certs) > 0 {
+		haveCertificates := len(certs) > 0
+		if frontend.Public && frontend.Port == PublicHttpPort && frontend.IsHTTP() && haveCertificates {
 			secureFrontendSection = c.Section(fmt.Sprintf("frontend secure-%s", frontend.Name()))
 			frontendSections = append(frontendSections, secureFrontendSection)
 			secureFrontendSection.Add(fmt.Sprintf("bind %s:%d ssl %s no-sslv3", host, PublicHttpsPort, strings.Join(certs, " ")))
@@ -230,11 +231,11 @@ func (s *Service) renderConfig(services backend.ServiceRegistrations) (string, e
 		isHTTPS := false
 		useBlocks, backends = createAcls(frontendSection, services, frontend, isHTTPS, aclNameGen, backends)
 		// Create link to backends
-		createUseBackends(frontendSection, useBlocks, frontend, (secureFrontendSection != nil), frontend.Public && frontend.IsHTTP() && s.ForceSsl)
+		createUseBackends(frontendSection, useBlocks, frontend, (secureFrontendSection != nil), frontend.Public && frontend.IsHTTP() && s.ForceSsl, haveCertificates)
 		if secureFrontendSection != nil {
 			isHTTPS = true
 			useBlocks, backends = createAcls(secureFrontendSection, services, frontend, isHTTPS, aclNameGen, backends)
-			createUseBackends(secureFrontendSection, useBlocks, frontend, false, false)
+			createUseBackends(secureFrontendSection, useBlocks, frontend, false, false, haveCertificates)
 		}
 	}
 
@@ -436,14 +437,14 @@ func createAcls(section *haproxy.Section, services backend.ServiceRegistrations,
 
 // createUseBackends creates a `use_backend` rules for the given input
 // and adds it to the given section
-func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection frontend, redirectHttps, forceSecure bool) {
+func createUseBackends(section *haproxy.Section, useBlocks []useBlock, selection frontend, redirectHttps, forceSecure, haveCertificates bool) {
 	for _, useBlock := range useBlocks {
 		if len(useBlock.AclNames) == 0 {
 			continue
 		}
 		acls := strings.Join(useBlock.AclNames, " ")
 		skipUseBackend := false
-		if !useBlock.AllowInsecure && forceSecure {
+		if !useBlock.AllowInsecure && forceSecure && haveCertificates {
 			section.Add(fmt.Sprintf("redirect scheme https if !{ ssl_fc } %s", acls))
 			skipUseBackend = true
 		} else if useBlock.AllowUnauthorized {

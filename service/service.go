@@ -16,6 +16,7 @@ package service
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -149,7 +150,7 @@ func (s *Service) updateHaproxy() error {
 	defer os.Remove(tempConf)
 
 	// Validate the config
-	if err := s.validateConfig(tempConf); err != nil {
+	if err := s.validateConfig(tempConf, config); err != nil {
 		s.Logger.Errorf("haproxy config validation failed: %#v", err)
 		return maskAny(err)
 	}
@@ -228,11 +229,14 @@ func (s *Service) createConfigFile() (string, string, error) {
 }
 
 // validateConfig calls haproxy to validate the given config file.
-func (s *Service) validateConfig(confPath string) error {
+func (s *Service) validateConfig(confPath, confContent string) error {
 	cmd := exec.Command(s.HaproxyPath, "-c", "-f", confPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		s.Logger.Errorf("Error in haproxy config: %s", string(output))
+		fmt.Println()
+		fmt.Println(confContent)
+		fmt.Println()
 		return maskAny(err)
 	}
 	return nil

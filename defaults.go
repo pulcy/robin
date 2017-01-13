@@ -25,6 +25,7 @@ const (
 )
 
 const (
+	defaultBackend           = "etcd"
 	defaultStatsPort         = 7088
 	defaultStatsSslCert      = ""
 	defaultSslCertsFolder    = "/certs/"

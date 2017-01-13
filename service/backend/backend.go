@@ -94,6 +94,15 @@ func (list ServiceRegistrations) Contains(sr ServiceRegistration) bool {
 	return false
 }
 
+func (list ServiceRegistrations) FullString() string {
+	slist := []string{}
+	for _, si := range list {
+		slist = append(slist, si.FullString())
+	}
+	sort.Strings(slist)
+	return "[" + strings.Join(slist, ",") + "]"
+}
+
 type ServiceInstance struct {
 	IP   string // IP address to connect to to reach the service instance
 	Port int    // Port to connect to to reach the service instance
