@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	RobinFrontendRecordAnnotationKey = "pulcy.com.robin.frontend.record"
+	RobinFrontendRecordsAnnotationKey = "pulcy.com.robin.frontend.records"
 )
 
 type k8sBackend struct {
@@ -98,13 +98,13 @@ func (eb *k8sBackend) createServices() (ServiceRegistrations, error) {
 // createServiceRegistrationsFromIngress creates all ServiceRegistrations needed for the given ingress.
 func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (ServiceRegistrations, error) {
 	// Look for FrontendRecord annotation
-	raw, found := i.GetAnnotations()[RobinFrontendRecordAnnotationKey]
+	raw, found := i.GetAnnotations()[RobinFrontendRecordsAnnotationKey]
 	if found {
-		var frontendRecord api.FrontendRecord
-		if err := json.Unmarshal([]byte(raw), &frontendRecord); err != nil {
+		var frontendRecords []api.FrontendRecord
+		if err := json.Unmarshal([]byte(raw), &frontendRecords); err != nil {
 			return nil, maskAny(err)
 		}
-		result, err := eb.createServiceRegistrationsFromFrontendRecord(i, frontendRecord)
+		result, err := eb.createServiceRegistrationsFromFrontendRecords(i, frontendRecords)
 		if err != nil {
 			return nil, maskAny(err)
 		}
@@ -155,8 +155,8 @@ func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (Serv
 }
 
 // createServiceRegistrationsFromFrontendRecord creates ServiceRegistrations from the given FrontendRecord.
-func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecord(i k8s.Ingress, record api.FrontendRecord) (ServiceRegistrations, error) {
-	var serviceMap map[string]struct{}
+func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingress, records []api.FrontendRecord) (ServiceRegistrations, error) {
+	serviceMap := make(map[string]struct{})
 	var services []regapi.Service
 	createService := func(backend k8s.IngressBackend) error {
 		key := fmt.Sprintf("%s-%s-%s", i.GetNamespace(), backend.ServiceName, backend.ServicePort.String())
@@ -196,7 +196,7 @@ func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecord(i k8s.Ingress
 		}
 	}
 
-	result, err := mergeTrees(eb.Logger, eb.config, services, []api.FrontendRecord{record})
+	result, err := mergeTrees(eb.Logger, eb.config, services, records)
 	if err != nil {
 		return nil, maskAny(err)
 	}
@@ -223,7 +223,7 @@ func (eb *k8sBackend) listIngresses() ([]k8s.Ingress, error) {
 // listServicePodIPs returns the IP addresses of all pods that match the service name in the given ingress backend.
 func (eb *k8sBackend) listServicePodIPs(backend k8s.IngressBackend, i k8s.Ingress) ([]string, error) {
 	// Find service
-	eb.Logger.Infof("Fetching IPs for service '%s' in '%s'", backend.ServiceName, i.GetNamespace())
+	eb.Logger.Debugf("Fetching IPs for service '%s' in '%s'", backend.ServiceName, i.GetNamespace())
 	srv, err := eb.client.GetService(i.GetNamespace(), backend.ServiceName)
 	if err != nil {
 		// Service not yet known, just return an empty list
