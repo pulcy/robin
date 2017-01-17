@@ -166,7 +166,7 @@ func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingres
 				return maskAny(err)
 			}
 			service := regapi.Service{
-				ServiceName: backend.ServiceName,
+				ServiceName: fmt.Sprintf("%s_%s", i.Namespace, backend.ServiceName),
 				ServicePort: backend.ServicePort.IntValue(),
 			}
 			for _, ip := range ips {
@@ -194,6 +194,21 @@ func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingres
 				}
 			}
 		}
+	}
+
+	// Patch serviceName of records
+	// record.ServiceName can be:
+	// - `name` -> A namespace will be prefixed (with a '_' separator)
+	// - `namespace.name` -> The '.' will be replaced with a '_'
+	for x, r := range records {
+		serviceName := r.Service
+		parts := strings.SplitN(serviceName, ".", 2)
+		if len(parts) == 1 {
+			serviceName = i.Namespace + "_" + serviceName
+		} else {
+			serviceName = strings.Join(parts, "_")
+		}
+		records[x].Service = serviceName
 	}
 
 	result, err := mergeTrees(eb.Logger, eb.config, services, records)
