@@ -137,7 +137,7 @@ func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (Serv
 				Sticky:          false,
 				Backup:          false,
 			}
-			ips, err := eb.listServicePodIPs(httpPath.Backend, i)
+			ips, err := eb.listServicePodIPsByIngress(httpPath.Backend, i)
 			if err != nil {
 				return nil, maskAny(err)
 			}
@@ -158,10 +158,10 @@ func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (Serv
 func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingress, records []api.FrontendRecord) (ServiceRegistrations, error) {
 	serviceMap := make(map[string]struct{})
 	var services []regapi.Service
-	createService := func(backend k8s.IngressBackend) error {
+	createServiceFromBackend := func(backend k8s.IngressBackend) error {
 		key := fmt.Sprintf("%s-%s-%s", i.GetNamespace(), backend.ServiceName, backend.ServicePort.String())
 		if _, found := serviceMap[key]; !found {
-			ips, err := eb.listServicePodIPs(backend, i)
+			ips, err := eb.listServicePodIPsByIngress(backend, i)
 			if err != nil {
 				return maskAny(err)
 			}
@@ -182,31 +182,73 @@ func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingres
 	}
 
 	if i.Spec.Backend != nil {
-		if err := createService(*i.Spec.Backend); err != nil {
+		if err := createServiceFromBackend(*i.Spec.Backend); err != nil {
 			return nil, maskAny(err)
 		}
 	}
 	for _, rule := range i.Spec.Rules {
 		if rule.HTTP != nil {
 			for _, httpPath := range rule.HTTP.Paths {
-				if err := createService(httpPath.Backend); err != nil {
+				if err := createServiceFromBackend(httpPath.Backend); err != nil {
 					return nil, maskAny(err)
 				}
 			}
 		}
 	}
 
+	createServiceFromRecord := func(record api.FrontendRecord) error {
+		serviceName := record.Service
+		namespace := i.Namespace
+		parts := strings.SplitN(serviceName, ".", 2)
+		if len(parts) == 2 {
+			serviceName = parts[0]
+			namespace = parts[1]
+		}
+
+		for _, sel := range record.Selectors {
+			if sel.ServicePort == 0 {
+				continue
+			}
+			key := fmt.Sprintf("%s-%s-%d", namespace, serviceName, sel.ServicePort)
+			if _, found := serviceMap[key]; !found {
+				ips, err := eb.listServicePodIPsByName(namespace, serviceName)
+				if err != nil {
+					return maskAny(err)
+				}
+				service := regapi.Service{
+					ServiceName: fmt.Sprintf("%s_%s", namespace, serviceName),
+					ServicePort: sel.ServicePort,
+				}
+				for _, ip := range ips {
+					service.Instances = append(service.Instances, regapi.ServiceInstance{
+						IP:   ip,
+						Port: sel.ServicePort,
+					})
+				}
+				serviceMap[key] = struct{}{}
+				services = append(services, service)
+			}
+		}
+		return nil
+	}
+
+	for _, r := range records {
+		if err := createServiceFromRecord(r); err != nil {
+			return nil, maskAny(err)
+		}
+	}
+
 	// Patch serviceName of records
 	// record.ServiceName can be:
 	// - `name` -> A namespace will be prefixed (with a '_' separator)
-	// - `namespace.name` -> The '.' will be replaced with a '_'
+	// - `name.namespace` -> The '.' will be replaced with a '_' and namespace will be put in front
 	for x, r := range records {
 		serviceName := r.Service
 		parts := strings.SplitN(serviceName, ".", 2)
 		if len(parts) == 1 {
 			serviceName = i.Namespace + "_" + serviceName
 		} else {
-			serviceName = strings.Join(parts, "_")
+			serviceName = parts[1] + "_" + parts[0]
 		}
 		records[x].Service = serviceName
 	}
@@ -236,24 +278,29 @@ func (eb *k8sBackend) listIngresses() ([]k8s.Ingress, error) {
 }
 
 // listServicePodIPs returns the IP addresses of all pods that match the service name in the given ingress backend.
-func (eb *k8sBackend) listServicePodIPs(backend k8s.IngressBackend, i k8s.Ingress) ([]string, error) {
+func (eb *k8sBackend) listServicePodIPsByIngress(backend k8s.IngressBackend, i k8s.Ingress) ([]string, error) {
+	return eb.listServicePodIPsByName(i.GetNamespace(), backend.ServiceName)
+}
+
+// listServicePodIPs returns the IP addresses of all pods that match the service name in the given ingress backend.
+func (eb *k8sBackend) listServicePodIPsByName(namespace, serviceName string) ([]string, error) {
 	// Find service
-	eb.Logger.Debugf("Fetching IPs for service '%s' in '%s'", backend.ServiceName, i.GetNamespace())
-	srv, err := eb.client.GetService(i.GetNamespace(), backend.ServiceName)
+	eb.Logger.Debugf("Fetching IPs for service '%s' in '%s'", serviceName, namespace)
+	srv, err := eb.client.GetService(namespace, serviceName)
 	if err != nil {
 		// Service not yet known, just return an empty list
-		eb.Logger.Warningf("Cannot find service '%s' in '%s'", backend.ServiceName, i.GetNamespace())
+		eb.Logger.Warningf("Cannot find service '%s' in '%s'", serviceName, namespace)
 		return nil, nil
 	}
 	selector := srv.Spec.Selector
 	// Find matching pods
-	pods, err := eb.client.ListPods(i.GetNamespace(), &k8s.ListOptions{
+	pods, err := eb.client.ListPods(namespace, &k8s.ListOptions{
 		LabelSelector: k8s.LabelSelector{
 			MatchLabels: selector,
 		},
 	})
 	if err != nil {
-		eb.Logger.Warningf("Failed to list pods for service '%s' in '%s': %#v", backend.ServiceName, i.GetNamespace(), err)
+		eb.Logger.Warningf("Failed to list pods for service '%s' in '%s': %#v", serviceName, namespace, err)
 		return nil, maskAny(err)
 	}
 	// Get IP's of pods
@@ -264,7 +311,7 @@ func (eb *k8sBackend) listServicePodIPs(backend k8s.IngressBackend, i k8s.Ingres
 			result = append(result, status.PodIP)
 		}
 	}
-	eb.Logger.Debugf("Found %d IP's for service '%s' in '%s'", len(result), backend.ServiceName, i.GetNamespace())
+	eb.Logger.Debugf("Found %d IP's for service '%s' in '%s'", len(result), serviceName, namespace)
 	return result, nil
 }
 
