@@ -6,8 +6,10 @@ type (
 		ConfigMapInterface
 		DaemonSetInterface
 		DeploymentInterface
+		EndpointsInterface
 		HorizontalPodAutoscalerInterface
 		IngressInterface
+		JobInterface
 		NamespaceInterface
 		NodeInterface
 		PodInterface
@@ -20,5 +22,10 @@ type (
 	ListOptions struct {
 		LabelSelector LabelSelector
 		FieldSelector FieldSelector
+	}
+
+	WatchOptions struct {
+		ListOptions
+		ResourceVersion string
 	}
 )

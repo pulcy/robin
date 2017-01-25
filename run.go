@@ -36,8 +36,10 @@ import (
 )
 
 const (
-	etcdLocksFolder = "lb/locks"
-	etcdAcmeFolder  = "lb/acme"
+	etcdLocksFolder   = "lb/locks"
+	etcdAcmeFolder    = "lb/acme"
+	etcdLogName       = "etcd"
+	kubernetesLogName = "kubernetes"
 )
 
 var (
@@ -49,24 +51,26 @@ var (
 	}
 
 	runArgs struct {
-		backend           string
-		logLevel          string
-		etcdAddr          string
-		etcdEndpoints     []string
-		etcdPath          string
-		etcdNoSync        bool
-		haproxyConfPath   string
-		statsPort         int
-		statsUser         string
-		statsPassword     string
-		statsSslCert      string
-		sslCertsFolder    string
-		forceSsl          bool
-		privateHost       string
-		publicHost        string
-		privateTcpSslCert string
-		excludePublic     bool
-		excludePrivate    bool
+		backend            string
+		logLevel           string
+		etcdLogLevel       string
+		kubernetesLogLevel string
+		etcdAddr           string
+		etcdEndpoints      []string
+		etcdPath           string
+		etcdNoSync         bool
+		haproxyConfPath    string
+		statsPort          int
+		statsUser          string
+		statsPassword      string
+		statsSslCert       string
+		sslCertsFolder     string
+		forceSsl           bool
+		privateHost        string
+		publicHost         string
+		privateTcpSslCert  string
+		excludePublic      bool
+		excludePrivate     bool
 
 		// acme
 		acmeHttpPort       int
@@ -86,6 +90,9 @@ var (
 		apiHost string
 		apiPort int
 	}
+
+	etcdLog       = logging.MustGetLogger(etcdLogName)
+	kubernetesLog = logging.MustGetLogger(kubernetesLogName)
 )
 
 type acmeServiceListener struct {
@@ -98,6 +105,8 @@ func init() {
 	defaultStatsUser := os.Getenv("STATS_USER")
 	cmdRun.Flags().StringVar(&runArgs.backend, "backend", defaultBackend, "Used backend (etcd|kubernetes)")
 	cmdRun.Flags().StringVar(&runArgs.logLevel, "log-level", defaultLogLevel, "Log level (debug|info|warning|error)")
+	cmdRun.Flags().StringVar(&runArgs.etcdLogLevel, "etcd-log-level", "", "Log level for ETCD backend (debug|info|warning|error)")
+	cmdRun.Flags().StringVar(&runArgs.kubernetesLogLevel, "kubernetes-log-level", "", "Log level for Kubernetes backend (debug|info|warning|error)")
 	cmdRun.Flags().StringVar(&runArgs.etcdAddr, "etcd-addr", "", "Address of etcd backend")
 	cmdRun.Flags().StringSliceVar(&runArgs.etcdEndpoints, "etcd-endpoint", nil, "Etcd client endpoints")
 	cmdRun.Flags().StringVar(&runArgs.etcdPath, "etcd-path", "", "Path into etcd namespace")
@@ -159,23 +168,21 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 		go etcdClient.AutoSync(context.Background(), time.Second*30)
 	}
 
-	// Set log level
-	level, err := logging.LogLevel(runArgs.logLevel)
-	if err != nil {
-		Exitf("Invalid log-level '%s': %#v", runArgs.logLevel, err)
-	}
-	logging.SetLevel(level, cmdMain.Use)
+	// Set log levels
+	setLogLevel(cmdMain.Use, runArgs.logLevel, runArgs.logLevel, "log-level")
+	setLogLevel(etcdLogName, runArgs.etcdLogLevel, runArgs.logLevel, "etcd-log-level")
+	setLogLevel(kubernetesLogName, runArgs.kubernetesLogLevel, runArgs.logLevel, "kubernetes-log-level")
 
 	// Prepare backend
 	var b backend.Backend
 	switch runArgs.backend {
 	case "etcd":
-		b, err = backend.NewEtcdBackend(etcdBackendConfig, log, etcdClient, runArgs.etcdPath)
+		b, err = backend.NewEtcdBackend(etcdBackendConfig, etcdLog, etcdClient, runArgs.etcdPath)
 		if err != nil {
 			Exitf("Failed to create ETCD backend: %#v", err)
 		}
 	case "kubernetes":
-		b, err = backend.NewKubernetesBackend(etcdBackendConfig, log)
+		b, err = backend.NewKubernetesBackend(etcdBackendConfig, kubernetesLog)
 		if err != nil {
 			Exitf("Failed to create Kubernetes backend: %#v", err)
 		}
@@ -282,5 +289,19 @@ func cmdRunRun(cmd *cobra.Command, args []string) {
 func (l *acmeServiceListener) CertificatesUpdated() {
 	if l.service != nil {
 		l.service.TriggerUpdate()
+	}
+}
+
+func setLogLevel(logName, logLevel, defaultLogLevel, flagName string) {
+	// Set log level
+	if logLevel == "" {
+		logLevel = defaultLogLevel
+	}
+	if logLevel != "" {
+		level, err := logging.LogLevel(logLevel)
+		if err != nil {
+			Exitf("Invalid %s '%s': %#v", flagName, logLevel, err)
+		}
+		logging.SetLevel(level, logName)
 	}
 }

@@ -19,10 +19,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
+	"sync"
 
 	k8s "github.com/YakLabs/k8s-client"
-	"github.com/YakLabs/k8s-client/http"
 	"github.com/op/go-logging"
 	regapi "github.com/pulcy/registrator-api"
 	api "github.com/pulcy/robin-api"
@@ -33,56 +32,52 @@ const (
 )
 
 type k8sBackend struct {
-	config         BackendConfig
-	client         k8s.Client
-	Logger         *logging.Logger
-	services       ServiceRegistrations
-	lastKnownState string
+	config        BackendConfig
+	registry      *resourceRegistry
+	Logger        *logging.Logger
+	startRegistry sync.Once
+	watchCond     *sync.Cond
 }
 
 func NewKubernetesBackend(config BackendConfig, logger *logging.Logger) (Backend, error) {
-	client, err := http.NewInCluster()
+	registry, err := newResourceRegistry(logger)
 	if err != nil {
 		return nil, maskAny(err)
 	}
 	return &k8sBackend{
-		config: config,
-		client: client,
-		Logger: logger,
+		config:    config,
+		registry:  registry,
+		Logger:    logger,
+		watchCond: sync.NewCond(new(sync.Mutex)),
 	}, nil
 }
 
 // Watch for changes on a path and return where there is a change.
 func (eb *k8sBackend) Watch() error {
-	for {
-		list, err := eb.createServices()
-		if err != nil {
-			return maskAny(err)
+	eb.startRegistry.Do(func() { eb.start() })
+
+	// Wait for events from the registry
+	eb.watchCond.L.Lock()
+	eb.watchCond.Wait()
+	eb.watchCond.L.Unlock()
+	return nil
+}
+
+// start starts the resource registry and listens for its changes.
+func (eb *k8sBackend) start() {
+	onChange := make(chan struct{})
+	go func() {
+		for _ = range onChange {
+			// trigger Watch return
+			eb.watchCond.Broadcast()
 		}
-		state := list.FullString()
-		if state == eb.lastKnownState {
-			eb.Logger.Debugf("Watch: state remains the same")
-			time.Sleep(time.Second * 10)
-		} else {
-			eb.lastKnownState = state
-			eb.services = list
-			eb.Logger.Debugf("Watch: state has changed")
-			return nil
-		}
-	}
+	}()
+	eb.registry.Start(onChange)
 }
 
 // Load all registered services
 func (eb *k8sBackend) Services() (ServiceRegistrations, error) {
-	return eb.services, nil
-}
-
-// Load all registered services
-func (eb *k8sBackend) createServices() (ServiceRegistrations, error) {
-	ingresses, err := eb.listIngresses()
-	if err != nil {
-		return nil, maskAny(err)
-	}
+	ingresses := eb.registry.GetIngresses()
 	result := ServiceRegistrations{}
 	for _, i := range ingresses {
 		srs, err := eb.createServiceRegistrationsFromIngress(i)
@@ -137,7 +132,7 @@ func (eb *k8sBackend) createServiceRegistrationsFromIngress(i k8s.Ingress) (Serv
 				Sticky:          false,
 				Backup:          false,
 			}
-			ips, err := eb.listServicePodIPsByIngress(httpPath.Backend, i)
+			ips, _, err := eb.listServicePodIPsByIngress(httpPath.Backend, i)
 			if err != nil {
 				return nil, maskAny(err)
 			}
@@ -161,7 +156,7 @@ func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingres
 	createServiceFromBackend := func(backend k8s.IngressBackend) error {
 		key := fmt.Sprintf("%s-%s-%s", i.GetNamespace(), backend.ServiceName, backend.ServicePort.String())
 		if _, found := serviceMap[key]; !found {
-			ips, err := eb.listServicePodIPsByIngress(backend, i)
+			ips, _, err := eb.listServicePodIPsByIngress(backend, i)
 			if err != nil {
 				return maskAny(err)
 			}
@@ -211,7 +206,7 @@ func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingres
 			}
 			key := fmt.Sprintf("%s-%s-%d", namespace, serviceName, sel.ServicePort)
 			if _, found := serviceMap[key]; !found {
-				ips, err := eb.listServicePodIPsByName(namespace, serviceName)
+				activeIPs, notActiveIPs, err := eb.listServicePodIPsByName(namespace, serviceName)
 				if err != nil {
 					return maskAny(err)
 				}
@@ -219,11 +214,19 @@ func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingres
 					ServiceName: fmt.Sprintf("%s_%s", namespace, serviceName),
 					ServicePort: sel.ServicePort,
 				}
-				for _, ip := range ips {
+				for _, ip := range activeIPs {
 					service.Instances = append(service.Instances, regapi.ServiceInstance{
 						IP:   ip,
 						Port: sel.ServicePort,
 					})
+				}
+				if record.HttpCheckMethod != "" || record.HttpCheckPath != "" {
+					for _, ip := range notActiveIPs {
+						service.Instances = append(service.Instances, regapi.ServiceInstance{
+							IP:   ip,
+							Port: sel.ServicePort,
+						})
+					}
 				}
 				serviceMap[key] = struct{}{}
 				services = append(services, service)
@@ -260,59 +263,34 @@ func (eb *k8sBackend) createServiceRegistrationsFromFrontendRecords(i k8s.Ingres
 	return result, nil
 }
 
-// listIngresses returns all ingresses found in all namespaces.
-func (eb *k8sBackend) listIngresses() ([]k8s.Ingress, error) {
-	namespaces, err := eb.client.ListNamespaces(nil)
-	if err != nil {
-		return nil, maskAny(err)
-	}
-	var all []k8s.Ingress
-	for _, ns := range namespaces.Items {
-		list, err := eb.client.ListIngresses(ns.Name, nil)
-		if err != nil {
-			return nil, maskAny(err)
-		}
-		all = append(all, list.Items...)
-	}
-	return all, nil
-}
-
 // listServicePodIPs returns the IP addresses of all pods that match the service name in the given ingress backend.
-func (eb *k8sBackend) listServicePodIPsByIngress(backend k8s.IngressBackend, i k8s.Ingress) ([]string, error) {
+func (eb *k8sBackend) listServicePodIPsByIngress(backend k8s.IngressBackend, i k8s.Ingress) ([]string, []string, error) {
 	return eb.listServicePodIPsByName(i.GetNamespace(), backend.ServiceName)
 }
 
-// listServicePodIPs returns the IP addresses of all pods that match the service name in the given ingress backend.
-func (eb *k8sBackend) listServicePodIPsByName(namespace, serviceName string) ([]string, error) {
-	// Find service
-	eb.Logger.Debugf("Fetching IPs for service '%s' in '%s'", serviceName, namespace)
-	srv, err := eb.client.GetService(namespace, serviceName)
-	if err != nil {
-		// Service not yet known, just return an empty list
-		eb.Logger.Warningf("Cannot find service '%s' in '%s'", serviceName, namespace)
-		return nil, nil
+// listServicePodIPs returns the IP addresses of all endpoints that match the service name in the given ingress backend.
+// The first set of IP addresses is from all active pods, the second set is from all not-yet-active pods.
+func (eb *k8sBackend) listServicePodIPsByName(namespace, serviceName string) ([]string, []string, error) {
+	eb.Logger.Debugf("searching for endpoints for service '%s' in '%s'", serviceName, namespace)
+	// Find matching endpoints
+	endpoints, found := eb.registry.GetEndpoint(namespace, serviceName)
+	if !found {
+		eb.Logger.Debugf("cannot find endpoints for service '%s' in '%s'", serviceName, namespace)
+		return nil, nil, nil
 	}
-	selector := srv.Spec.Selector
-	// Find matching pods
-	pods, err := eb.client.ListPods(namespace, &k8s.ListOptions{
-		LabelSelector: k8s.LabelSelector{
-			MatchLabels: selector,
-		},
-	})
-	if err != nil {
-		eb.Logger.Warningf("Failed to list pods for service '%s' in '%s': %#v", serviceName, namespace, err)
-		return nil, maskAny(err)
-	}
-	// Get IP's of pods
-	result := make([]string, 0, len(pods.Items))
-	for _, p := range pods.Items {
-		status := p.Status
-		if status != nil && status.Phase == k8s.PodRunning {
-			result = append(result, status.PodIP)
+	// Get IP's
+	var active []string
+	var notYetActive []string
+	for _, subset := range endpoints.Subsets {
+		for _, addr := range subset.Addresses {
+			active = append(active, addr.IP)
+		}
+		for _, addr := range subset.NotReadyAddresses {
+			notYetActive = append(notYetActive, addr.IP)
 		}
 	}
-	eb.Logger.Debugf("Found %d IP's for service '%s' in '%s'", len(result), serviceName, namespace)
-	return result, nil
+	eb.Logger.Debugf("found %d/%d IP's for service '%s' in '%s'", len(active), len(notYetActive), serviceName, namespace)
+	return active, notYetActive, nil
 }
 
 func hashOf(s ...string) string {
